@@ -1,0 +1,11 @@
+{
+  "id": "ModTheSpire2NameAliasBase",
+  "name": "ModTheSpire2 Name Alias Base",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled dependency target used to verify unique dependency-name alias resolution.",
+  "has_dll": true,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "mod_type": "framework"
+}

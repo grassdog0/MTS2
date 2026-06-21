@@ -1,0 +1,12 @@
+{
+  "id": "ModTheSpire2RuntimeScopeConfigTest",
+  "name": "ModTheSpire2 Runtime Scope Config Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify explicit runtime/config scope can be classified as Runtime Hot-Apply when there is no DLL/PCK or gameplay payload.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply_scope": "runtime",
+  "content_type": "config"
+}

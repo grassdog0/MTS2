@@ -1,0 +1,15 @@
+{
+  "id": "ModTheSpire2VersionedDependencyTooLowTest",
+  "name": "ModTheSpire2 Versioned Dependency Too Low Test",
+  "version": "0.0.0",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply": true,
+  "dependencies": [
+    {
+      "id": "ModTheSpire2VersionedFrameworkOldTest",
+      "min_version": "v1.3.0"
+    }
+  ]
+}

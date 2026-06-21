@@ -1,0 +1,10 @@
+{
+  "id": "ModTheSpire2AmbiguousNameAliasTwo",
+  "name": "ModTheSpire2 Ambiguous Name Alias",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Second controlled duplicate display-name target.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false
+}

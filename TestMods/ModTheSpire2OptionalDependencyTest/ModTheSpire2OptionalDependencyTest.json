@@ -1,0 +1,16 @@
+{
+  "id": "ModTheSpire2OptionalDependencyTest",
+  "name": "ModTheSpire2 Optional Dependency Test",
+  "version": "0.0.0",
+  "description": "Controlled fixture: optional dependency objects must not be treated as missing hard dependencies.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply": true,
+  "dependencies": [
+    {
+      "id": "ModTheSpire2OptionalMissingDependency",
+      "optional": true
+    }
+  ]
+}

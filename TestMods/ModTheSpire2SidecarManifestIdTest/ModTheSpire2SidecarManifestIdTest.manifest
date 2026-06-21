@@ -1,0 +1,10 @@
+{
+  "id": "ModTheSpire2SidecarManifestIdTest",
+  "name": "ModTheSpire2 Sidecar Manifest Id Test",
+  "version": "0.0.0",
+  "description": "Controlled manifest-extension fixture for scanner compatibility.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply": true
+}

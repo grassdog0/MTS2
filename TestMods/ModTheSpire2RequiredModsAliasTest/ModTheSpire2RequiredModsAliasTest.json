@@ -1,0 +1,16 @@
+{
+  "id": "ModTheSpire2RequiredModsAliasTest",
+  "name": "ModTheSpire2 RequiredMods Alias Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify requiredMods and modId dependency parsing.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply": true,
+  "requiredMods": [
+    {
+      "modId": "BaseLib"
+    }
+  ]
+}

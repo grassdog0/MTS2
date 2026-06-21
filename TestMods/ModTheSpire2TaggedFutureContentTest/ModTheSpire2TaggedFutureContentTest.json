@@ -1,0 +1,15 @@
+{
+  "id": "ModTheSpire2TaggedFutureContentTest",
+  "name": "ModTheSpire2 Tagged Future Content Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify future-run content classification through content tags instead of hot_apply_scope.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": true,
+  "content_type": "future_run_content",
+  "content_tags": [
+    "events",
+    "run_generation"
+  ]
+}

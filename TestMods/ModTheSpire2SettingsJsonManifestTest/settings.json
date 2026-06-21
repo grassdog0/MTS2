@@ -1,0 +1,8 @@
+{
+  "id": "ModTheSpire2SettingsJsonManifestTest",
+  "name": "ModTheSpire2 Settings Json Manifest Test",
+  "version": "0.0.0",
+  "has_dll": true,
+  "has_pck": true,
+  "affects_gameplay": true
+}

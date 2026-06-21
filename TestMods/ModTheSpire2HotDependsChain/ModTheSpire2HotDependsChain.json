@@ -1,0 +1,14 @@
+{
+  "id": "ModTheSpire2HotDependsChain",
+  "name": "ModTheSpire2 Hot Depends Chain",
+  "author": "HZDH",
+  "description": "Controlled hot-apply classification test: depends on another hot candidate that is downgraded, so it must also be restart-required.",
+  "version": "0.1.0",
+  "has_dll": false,
+  "has_pck": false,
+  "dependencies": [
+    "ModTheSpire2HotDependsRestart"
+  ],
+  "affects_gameplay": false,
+  "hot_apply": true
+}

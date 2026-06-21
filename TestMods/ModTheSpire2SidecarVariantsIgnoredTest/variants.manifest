@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "variants": [
+    {
+      "compatTarget": "0.107.1",
+      "directory": "lib/0.107.1",
+      "assembly": "IgnoredVariant.dll",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

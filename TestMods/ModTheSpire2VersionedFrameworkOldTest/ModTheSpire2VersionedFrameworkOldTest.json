@@ -1,0 +1,9 @@
+{
+  "id": "ModTheSpire2VersionedFrameworkOldTest",
+  "name": "ModTheSpire2 Versioned Framework Old Test",
+  "version": "v1.2.0",
+  "has_dll": true,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "mod_type": "framework"
+}

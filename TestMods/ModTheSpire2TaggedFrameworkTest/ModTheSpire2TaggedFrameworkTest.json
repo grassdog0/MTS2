@@ -1,0 +1,15 @@
+{
+  "id": "ModTheSpire2TaggedFrameworkTest",
+  "name": "ModTheSpire2 Tagged Framework Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify framework/library tags are restart-required without hardcoded ids.",
+  "has_dll": true,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "mod_type": "framework",
+  "tags": [
+    "library",
+    "dependency_root"
+  ]
+}

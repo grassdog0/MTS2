@@ -1,0 +1,13 @@
+{
+  "id": "ModTheSpire2MissingDependencyTest",
+  "name": "ModTheSpire2 Missing Dependency Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify missing dependency reasons are visible even for restart-required mods.",
+  "has_dll": true,
+  "has_pck": true,
+  "affects_gameplay": true,
+  "dependencies": [
+    "ModTheSpire2NotInstalledDependency"
+  ]
+}
