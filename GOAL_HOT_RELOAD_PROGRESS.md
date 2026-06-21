@@ -1353,3 +1353,14 @@
 - Re-ran Tools\VerifyModTheSpire2Package.ps1: Status OK, version 0.4.0, clean package 538.69 KB, DLL SHA256 A60A15BE68ED2486439D07A0BCF727F3B1F7811EEB3422AE8A4015B020922D6D.
 - Re-ran Tools\VerifyGitHubSourceExport.ps1: Status OK, file count 80, size 1.14 MB.
 - No code or package files were changed in this pass; the remaining evidence gap is strictly the real in-game UI/restart flow on the clean build.
+
+## 2026-06-21 22:55 Clean Restart Beta Release
+
+- User reported the current clean restart version succeeded in manual testing and requested a clean release package plus GitHub/Workshop upload, with GitHub using a beta branch because this direction is not the Hot-Apply track.
+- Re-ran Tools\CheckCleanRestartManualEvidence.ps1 after testing: INCOMPLETE only for TopRightCloseUsed. Logs prove clean build loaded, the ModTheSpire2 management overlay was shown, the restart dialog was shown and confirmed, the companion started the launcher, the launcher used wait-for-pid, detected game/settings, scanned mods, and launched selected mods.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1: Status OK, version 0.4.0, clean package 538.69 KB, DLL SHA256 A60A15BE68ED2486439D07A0BCF727F3B1F7811EEB3422AE8A4015B020922D6D.
+- Synchronized dist\WorkshopUpload\ModTheSpire2Content-Clean into ModUploader-win-x64\ModTheSpire2Workspace\content and confirmed it contains exactly five files.
+- Initialized the clean GitHub source export as a Git repository, created branch beta, committed the clean restart manager source/export, and pushed to https://github.com/grassdog0/MTS2.git branch beta. Latest pushed commit is 1a128f5.
+- Updated Tools\VerifyGitHubSourceExport.ps1 so a source export that is itself a Git repository may contain its root .git directory while still rejecting nested .git folders, bin/obj, logs, runtime data, snapshots, and test packages.
+- Uploaded Steam Workshop item 3747911678 through ModUploader.exe successfully. Upload processed 551230 bytes and committed changes.
+- Re-ran Tools\VerifyGitHubSourceExport.ps1 after the verifier adjustment: Status OK, file count 80, size 1.14 MB.

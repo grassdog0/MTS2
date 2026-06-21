@@ -1,6 +1,6 @@
 # ModTheSpire2 Clean Restart Manager Release Status
 
-Last updated: 2026-06-21 22:20.
+Last updated: 2026-06-21 22:55.
 
 This document records the current state of the `GOAL_CLEAN_RESTART_MANAGER.md` work.
 
@@ -28,6 +28,20 @@ Clean GitHub/source export:
 
 ```text
 dist\Release\ModTheSpire2-0.4.0-CleanRestart-GitHubSource
+```
+
+GitHub beta branch:
+
+```text
+https://github.com/grassdog0/MTS2/tree/beta
+Latest pushed commit: 1a128f5
+```
+
+Steam Workshop item:
+
+```text
+3747911678
+Latest upload: 2026-06-21 22:50, successful through ModUploader.exe
 ```
 
 Rollback snapshots:
@@ -100,18 +114,18 @@ Current result:
 
 ```text
 Status       : INCOMPLETE
-Missing      : CompanionLogExists, LauncherLogExists, CleanBuildLoaded, ModSettingsButtonSeen, ManagementDialogShown, TopRightCloseUsed, RestartDialogShown, RestartConfirmed, LauncherStartedByCompanion, LauncherWaitForPidUsed, LauncherDetectedGame, LauncherScannedMods, LauncherLaunchedSelected
-NextAction   : Live DLL hash matches the clean build, but companion.log has not loaded it yet. Fully exit Slay the Spire 2, start it again, open ModTheSpire2 management, then rerun this script.
+Missing      : TopRightCloseUsed
+NextAction   : Run the missing manual actions, then rerun this script.
 LiveDllSha256: A60A15BE68ED2486439D07A0BCF727F3B1F7811EEB3422AE8A4015B020922D6D
-NewestMarker : 
+NewestMarker : Initialize ModTheSpire2 0.4.0-clean-restart-ui
 ```
 
 Interpretation:
 
 ```text
-The live DLL hash matches the clean build. Old logs were backed up by Tools\PrepareCleanRestartManualTest.ps1, so the current missing companion/launcher logs are expected until the next manual game run.
+The clean DLL loaded in-game and the core restart flow is proven by logs: management overlay opened, restart dialog appeared, restart was confirmed, the launcher was started by the companion with wait-for-pid, the launcher detected the game/settings, scanned mods, and launched selected mods.
 
-The current 0.4.0-clean-restart-ui DLL still needs one real in-game test pass: launch the game, open the ModTheSpire2 management overlay, test close/restart flow, then rerun the evidence checker.
+The only missing automated evidence is the top-right X close action. The user reported the current version succeeded, but the evidence checker still needs one top-right X close log entry for a fully strict pass.
 ```
 
 ## Implemented Product Direction
@@ -202,14 +216,14 @@ Ready for user manual testing:
 yes
 ```
 
-Ready for final Workshop/GitHub release without manual game verification:
+Ready for Workshop/GitHub beta release:
 
 ```text
-not yet
+yes
 ```
 
 Reason:
 
 ```text
-Automation proves package/source hygiene and launcher diagnostics, but the in-game overlay and close/reopen flow still require real game UI verification.
+Package/source hygiene passed, clean-build in-game restart flow was observed in logs, GitHub beta was pushed, and Workshop item 3747911678 was uploaded successfully.
 ```
