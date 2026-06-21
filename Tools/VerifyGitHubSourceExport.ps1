@@ -18,8 +18,9 @@ if (-not (Test-Path -LiteralPath $source)) {
     Fail "Missing source export: $source"
 }
 
+$sourceFull = [System.IO.Path]::GetFullPath($source).TrimEnd('\')
+
 $forbiddenNames = @(
-    ".git",
     "bin",
     "obj",
     "ModTheSpire2Data",
@@ -29,7 +30,10 @@ $forbiddenNames = @(
 )
 
 $forbidden = Get-ChildItem -LiteralPath $source -Recurse -Force | Where-Object {
+    $full = [System.IO.Path]::GetFullPath($_.FullName).TrimEnd('\')
+    $isAllowedRootGit = $_.PSIsContainer -and $_.Name -eq ".git" -and $full -eq (Join-Path $sourceFull ".git")
     $forbiddenNames -contains $_.Name -or
+    ($_.Name -eq ".git" -and -not $isAllowedRootGit) -or
     $_.Name -match '\.(obj|bak|log|tmp)$' -or
     $_.Name -match '^analysis-.*\.(tsv|txt|json)$'
 }
@@ -89,8 +93,11 @@ if ($readme.Contains("Conservative Hot-Apply") -or $readme.Contains("State-aware
     Fail "README still advertises Hot-Apply as a current player-facing workflow"
 }
 
-$fileCount = (Get-ChildItem -LiteralPath $source -Recurse -File | Measure-Object).Count
-$size = (Get-ChildItem -LiteralPath $source -Recurse -File | Measure-Object Length -Sum).Sum
+$sourceFiles = Get-ChildItem -LiteralPath $source -Recurse -File -Force | Where-Object {
+    [System.IO.Path]::GetFullPath($_.FullName) -notlike ((Join-Path $sourceFull ".git") + "\*")
+}
+$fileCount = ($sourceFiles | Measure-Object).Count
+$size = ($sourceFiles | Measure-Object Length -Sum).Sum
 
 [pscustomobject]@{
     Status = "OK"
