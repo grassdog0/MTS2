@@ -1,0 +1,12 @@
+{
+  "id": "ModTheSpire2HotConfigTest",
+  "name": "ModTheSpire2 Hot Config Test",
+  "author": "HZDH",
+  "description": "Tiny configuration-only test mod for ModTheSpire2 hot-apply classification experiments.",
+  "version": "0.1.0",
+  "has_dll": false,
+  "has_pck": false,
+  "dependencies": [],
+  "affects_gameplay": false,
+  "hot_apply": true
+}
