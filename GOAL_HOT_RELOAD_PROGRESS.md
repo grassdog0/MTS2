@@ -346,3 +346,15 @@
 - Rebuilt DLL/launcher, synchronized clean/uploader/live content, and full package verification passed.
 - Rebuilt Workshop and GitHub release zips with the compatibility fix.
 
+## 2026-06-21 10:55
+- Updated README and Workshop metadata links to the public repository: https://github.com/grassdog0/MTS2.
+- Rebuilt clean release copies:
+  - dist/Release/ModTheSpire2-0.4.0-WorkshopContent
+  - dist/Release/ModTheSpire2-0.4.0-GitHubSource
+- Rebuilt release zips:
+  - dist/Release/ModTheSpire2-0.4.0-WorkshopContent.zip
+  - dist/Release/ModTheSpire2-0.4.0-GitHubSource.zip
+- Full verifier result: Status OK, version 0.4.0, clean package 457.7 KB, DLL SHA256 0DB05DBA7C1790D75F2D0E52138DA6A95F95BA7217947D9D9C27D6E448E2C81D.
+- Created local GitHub repository commit in the clean source export: 8ed617d Release ModTheSpire2 0.4.0.
+- GitHub push is blocked by local network connectivity: github.com resolves and pings, but TCP 443 times out for git and curl. Retry from a network that can reach GitHub HTTPS.
+
