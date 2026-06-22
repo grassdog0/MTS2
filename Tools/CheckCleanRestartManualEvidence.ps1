@@ -19,7 +19,7 @@ function Read-TextOrEmpty([string]$path) {
 $companion = Read-TextOrEmpty $companionLog
 $launcher = Read-TextOrEmpty $launcherLog
 $dllPath = Join-Path $modDir "ModTheSpire2.dll"
-$expectedCleanDllSha256 = "A60A15BE68ED2486439D07A0BCF727F3B1F7811EEB3422AE8A4015B020922D6D"
+$expectedCleanDllSha256 = "725FE3B57D829CC0466F1EF7BD56679DA51ED3CF9C47794083E4535F987191B7"
 $dllHash = if (Test-Path -LiteralPath $dllPath) {
     (Get-FileHash -Algorithm SHA256 -LiteralPath $dllPath).Hash
 } else {

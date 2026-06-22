@@ -1364,3 +1364,17 @@
 - Updated Tools\VerifyGitHubSourceExport.ps1 so a source export that is itself a Git repository may contain its root .git directory while still rejecting nested .git folders, bin/obj, logs, runtime data, snapshots, and test packages.
 - Uploaded Steam Workshop item 3747911678 through ModUploader.exe successfully. Upload processed 551230 bytes and committed changes.
 - Re-ran Tools\VerifyGitHubSourceExport.ps1 after the verifier adjustment: Status OK, file count 80, size 1.14 MB.
+
+## 2026-06-22 22:05 Launch Option Documentation Clarification
+
+- Responded to player feedback about `--rendering-driver opengl3` not applying when launch options are set incorrectly.
+- Kept the intended Steam-first behavior: double-clicking ModTheSpire2Launcher.exe is not expanded to read Steam launch options.
+- Updated the in-game Close and Open Launcher confirmation dialog to state that `%command%` must be kept exactly as written.
+- Added an explicit example for extra game arguments after `%command%`: `"<path to ModTheSpire2Launcher.exe>" -- %command% --rendering-driver opengl3`.
+- Updated Workshop README, GitHub README, uploader workspace workshop.json, and uploader template workshop.json with the same rule.
+- Rebuilt only ModTheSpire2.dll from ModTheSpire2Entry.HotManage.cs; the native launcher executable was not changed.
+- Synchronized the new DLL and README to clean Workshop content, uploader content, live test folder, and the beta source export.
+- Updated Tools\CheckCleanRestartManualEvidence.ps1 expected DLL hash to `725FE3B57D829CC0466F1EF7BD56679DA51ED3CF9C47794083E4535F987191B7`.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1: Status OK, version 0.4.0, clean package 543.13 KB, DLL SHA256 725FE3B57D829CC0466F1EF7BD56679DA51ED3CF9C47794083E4535F987191B7.
+- Re-ran Tools\VerifyGitHubSourceExport.ps1: Status OK, file count 80, size 1.14 MB.
+- Created manual test package `dist\TestPackages\ModTheSpire2-20260622-2205-launch-option-docs` and rollback snapshot `dist\snapshots\simple-manager\20260622-2205-launch-option-docs`.

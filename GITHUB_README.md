@@ -38,6 +38,12 @@ Steam Workshop cannot set Steam launch options automatically. Players who want S
 "<path to ModTheSpire2Launcher.exe>" -- %command%
 ```
 
+Keep `%command%` exactly as written. Do not replace or remove it. If the game needs extra launch arguments, add them after `%command%`, for example:
+
+```text
+"<path to ModTheSpire2Launcher.exe>" -- %command% --rendering-driver opengl3
+```
+
 The in-game Close and Open Launcher confirmation dialog includes a copy button for this launch option.
 
 ## Repository Layout

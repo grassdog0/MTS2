@@ -152,6 +152,14 @@ E:\SteamLibrary\steamapps\workshop\content\2868840\<workshop item id>\ModTheSpir
 
 Use the actual path to `ModTheSpire2Launcher.exe` on your computer.
 
+Keep the literal text `%command%` exactly as written. Do not replace or remove it. Steam uses `%command%` to pass the original Slay the Spire 2 launch command to ModTheSpire2.
+
+If the game needs extra launch arguments, add them after `%command%`. For example, if your GPU needs the OpenGL renderer:
+
+```text
+"E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\ModTheSpire2\ModTheSpire2Launcher.exe" -- %command% --rendering-driver opengl3
+```
+
 The in-game `Close and Open Launcher` confirmation dialog includes a copy button for the launch option.
 
 ## Source Code

@@ -187,8 +187,10 @@ internal static class RestartToLauncher
         var message =
             "Close the current game and open the ModTheSpire2 launcher?\n\n" +
             "The launcher will appear after the game has fully exited. From there, you can launch vanilla or choose which mods to enable for this session.\n\n" +
-            "To show ModTheSpire2 every time you press Play in Steam, set this Steam launch option:\n\n" +
+            "To show ModTheSpire2 every time you press Play in Steam, set this Steam launch option. Keep %command% exactly as written:\n\n" +
             launchOption + "\n\n" +
+            "If the game needs extra launch arguments, add them after %command%. Example:\n\n" +
+            launchOption + " --rendering-driver opengl3\n\n" +
             "Steam Workshop cannot change launch options automatically.";
 
         try
@@ -289,7 +291,7 @@ internal static class RestartToLauncher
 
             var body = new Label
             {
-                Text = "Close the current game and open the ModTheSpire2 launcher?\n\nThe launcher will appear after the game has fully exited. From there, you can launch vanilla or choose which mods to enable for this session.\n\nTo show ModTheSpire2 every time you press Play in Steam, set this Steam launch option:",
+                Text = "Close the current game and open the ModTheSpire2 launcher?\n\nThe launcher will appear after the game has fully exited. From there, you can launch vanilla or choose which mods to enable for this session.\n\nTo show ModTheSpire2 every time you press Play in Steam, set this Steam launch option. Keep %command% exactly as written:",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
                 CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 130),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
@@ -315,9 +317,9 @@ internal static class RestartToLauncher
 
             var note = new Label
             {
-                Text = "Steam Workshop cannot change launch options automatically.",
+                Text = "Do not replace or remove %command%. If the game needs extra launch arguments, add them after %command%, for example: --rendering-driver opengl3. Steam Workshop cannot change launch options automatically.",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 34),
+                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 58),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             UiStyle.ApplyMutedLabel(note);
