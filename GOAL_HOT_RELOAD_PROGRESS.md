@@ -1378,3 +1378,11 @@
 - Re-ran Tools\VerifyModTheSpire2Package.ps1: Status OK, version 0.4.0, clean package 543.13 KB, DLL SHA256 725FE3B57D829CC0466F1EF7BD56679DA51ED3CF9C47794083E4535F987191B7.
 - Re-ran Tools\VerifyGitHubSourceExport.ps1: Status OK, file count 80, size 1.14 MB.
 - Created manual test package `dist\TestPackages\ModTheSpire2-20260622-2205-launch-option-docs` and rollback snapshot `dist\snapshots\simple-manager\20260622-2205-launch-option-docs`.
+
+## 2026-06-22 22:12 Launch Option Documentation Release
+
+- User manually confirmed the launch option documentation build is correct.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1 before release: Status OK, version 0.4.0, clean package 543.13 KB, DLL SHA256 725FE3B57D829CC0466F1EF7BD56679DA51ED3CF9C47794083E4535F987191B7.
+- Re-ran Tools\VerifyGitHubSourceExport.ps1 before release: Status OK, file count 80, size 1.15 MB.
+- Committed and pushed GitHub beta branch commit `42c9908` with message `Clarify Steam launch option arguments`.
+- Uploaded Steam Workshop item `3747911678` with ModUploader.exe. Upload completed successfully and processed 127676 bytes.
