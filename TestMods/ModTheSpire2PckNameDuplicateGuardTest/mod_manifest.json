@@ -1,0 +1,7 @@
+{
+  "pck_name": "ModTheSpire2PckNameDuplicateGuardTest",
+  "name": "ModTheSpire2 Pck Name Duplicate Guard Sidecar",
+  "author": "ModTheSpire2",
+  "description": "Sidecar without id; scanner should ignore it because the same directory has a real id manifest.",
+  "version": "0.1.0"
+}

@@ -1,0 +1,7 @@
+{
+  "pck_name": "ModTheSpire2PckNameFallbackTest",
+  "name": "ModTheSpire2 Pck Name Fallback Test",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify id fallback from pck_name when no id-bearing JSON exists in the same directory.",
+  "version": "0.1.0"
+}

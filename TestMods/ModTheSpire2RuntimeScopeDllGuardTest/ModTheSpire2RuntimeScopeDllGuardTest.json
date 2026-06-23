@@ -1,0 +1,12 @@
+{
+  "id": "ModTheSpire2RuntimeScopeDllGuardTest",
+  "name": "ModTheSpire2 Runtime Scope DLL Guard Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify explicit runtime/config scope does not make DLL/PCK payloads hot-apply safe.",
+  "has_dll": true,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply_scope": "runtime",
+  "content_type": "config"
+}

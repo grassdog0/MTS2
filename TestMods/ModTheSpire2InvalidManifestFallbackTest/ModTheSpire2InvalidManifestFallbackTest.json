@@ -1,0 +1,8 @@
+{
+  "id": "ModTheSpire2InvalidManifestFallbackTest",
+  "name": "ModTheSpire2 Invalid Manifest Fallback Test",
+  "version": "0.0.0",
+  "description": "This intentionally malformed manifest simulates Workshop mods with broken JSON strings,
+  "has_dll": true,
+  "has_pck": false
+}

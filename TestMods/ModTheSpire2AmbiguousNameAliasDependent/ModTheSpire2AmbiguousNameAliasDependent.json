@@ -1,0 +1,14 @@
+{
+  "id": "ModTheSpire2AmbiguousNameAliasDependent",
+  "name": "ModTheSpire2 Ambiguous Name Alias Dependent",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled mod whose dependency references a non-unique display name and should remain unresolved.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply": true,
+  "dependencies": [
+    "ModTheSpire2 Ambiguous Name Alias"
+  ]
+}

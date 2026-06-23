@@ -1,0 +1,14 @@
+{
+  "id": "ModTheSpire2RunSafeRuntimeConfigTest",
+  "name": "ModTheSpire2 Run-Safe Runtime Config Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify runtime/config Hot-Apply can remain available during an active run only when explicitly tagged run-safe.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply_scope": "runtime",
+  "content_tags": [
+    "run_safe"
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "id": "ModTheSpire2TaggedFrameworkDependentContentTest",
+  "name": "ModTheSpire2 Tagged Framework Dependent Content Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify future-run content can use an already-loaded tagged framework dependency root.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": true,
+  "dependencies": [
+    "ModTheSpire2TaggedFrameworkTest"
+  ],
+  "content_type": "future_run_content",
+  "content_tags": [
+    "events",
+    "run_generation"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "ModTheSpire2PckNameDuplicateGuardReal",
+  "name": "ModTheSpire2 Pck Name Duplicate Guard Real",
+  "author": "ModTheSpire2",
+  "description": "Real id manifest used to verify pck_name sidecars in the same directory are ignored.",
+  "version": "0.1.0",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false
+}

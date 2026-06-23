@@ -1,0 +1,13 @@
+{
+  "id": "ModTheSpire2TaggedActiveRunPatchTest",
+  "name": "ModTheSpire2 Tagged Active Run Patch Test",
+  "version": "0.0.0",
+  "description": "Controlled manifest used to verify active-run patch tags override hot_apply declarations and remain restart-required.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply": true,
+  "tags": [
+    "active_run_patch"
+  ]
+}

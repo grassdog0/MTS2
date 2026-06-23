@@ -1,0 +1,14 @@
+{
+  "id": "ModTheSpire2HotDependsRestart",
+  "name": "ModTheSpire2 Hot Depends Restart",
+  "author": "HZDH",
+  "description": "Controlled hot-apply classification test: declares hot_apply but depends on BaseLib, so it must be restart-required.",
+  "version": "0.1.0",
+  "has_dll": false,
+  "has_pck": false,
+  "dependencies": [
+    { "id": "BaseLib" }
+  ],
+  "affects_gameplay": false,
+  "hot_apply": true
+}

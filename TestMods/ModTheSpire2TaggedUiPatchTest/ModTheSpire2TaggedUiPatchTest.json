@@ -1,0 +1,14 @@
+{
+  "id": "ModTheSpire2TaggedUiPatchTest",
+  "name": "ModTheSpire2 Tagged UI Patch Test",
+  "version": "0.1.0",
+  "author": "ModTheSpire2",
+  "description": "Controlled manifest used to verify UI/core patch tags override hot_apply declarations and remain restart-required.",
+  "has_dll": false,
+  "has_pck": false,
+  "affects_gameplay": false,
+  "hot_apply": true,
+  "tags": [
+    "ui_patch"
+  ]
+}
