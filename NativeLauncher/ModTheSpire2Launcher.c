@@ -18,6 +18,7 @@
 #define MAX_BUF 1048576
 #define MAX_DEPS 16
 #define MAX_PROFILE 128
+#define CURRENT_PROFILE_LABEL L"Current Game Settings"
 
 typedef struct ModInfo {
     WCHAR id[MAX_TEXT];
@@ -41,7 +42,7 @@ typedef struct ModInfo {
 static HINSTANCE g_instance;
 static HWND g_list, g_status, g_gamePath, g_settingsPath, g_title, g_subtitle;
 static HWND g_btnRefresh, g_btnVanilla, g_btnLaunch, g_btnUp, g_btnDown, g_btnSaveOrder, g_btnResetOrder;
-static HWND g_orderEdit, g_btnApplyOrder, g_profileCombo, g_btnSaveProfile, g_btnLoadProfile;
+static HWND g_orderEdit, g_btnApplyOrder, g_profileCombo, g_btnSaveProfile;
 static HFONT g_font, g_titleFont;
 static HBRUSH g_bgBrush;
 static COLORREF g_bgColor = RGB(246, 243, 235);
@@ -58,6 +59,7 @@ static WCHAR g_savedOrder[MAX_MODS][MAX_TEXT];
 static int g_savedOrderCount;
 static WCHAR g_savedEnabled[MAX_MODS][MAX_TEXT];
 static int g_savedEnabledCount;
+static BOOL g_refreshingProfiles;
 
 static const WCHAR* T(const WCHAR* zh, const WCHAR* en) { (void)zh; return en; }
 static char* ReplaceSpan(char* src, DWORD* size, DWORD start, DWORD oldLen, const char* newText);
@@ -71,9 +73,11 @@ static void JsonLoadAfterIds(const char* json, WCHAR ids[MAX_DEPS][MAX_TEXT], in
 static void JsonLoadBeforeIds(const char* json, WCHAR ids[MAX_DEPS][MAX_TEXT], int* idCount);
 static BOOL LoadOrderFromPath(const WCHAR* path);
 static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList);
+static void RefreshList(void);
 static void EnforceDependencyChecks(int changedIndex);
 static int PruneInvalidChecks(void);
 static BOOL DirectoryHasSidecarManifest(const WCHAR* path);
+static void AppendLogf(const WCHAR* fmt, ...);
 
 static void DirName(WCHAR* path) {
     WCHAR* slash = wcsrchr(path, L'\\');
@@ -522,6 +526,60 @@ static BOOL JsonObjectIdInDiscoveredMods(const char* objectStart, const char* ob
         if (_wcsicmp(g_mods[i].id, id) == 0) return TRUE;
     }
     return FALSE;
+}
+
+static BOOL LoadSettingsOrderFromBytes(const char* json, DWORD size) {
+    g_savedOrderCount = 0;
+    DWORD start = 0, len = 0;
+    if (!json || !FindModListSpan(json, size, &start, &len)) return FALSE;
+    const char* p = json + start;
+    const char* end = p + len;
+    while (p < end && g_savedOrderCount < MAX_MODS) {
+        if (*p != '{') {
+            ++p;
+            continue;
+        }
+        const char* objectStart = p;
+        BOOL inString = FALSE, escaped = FALSE;
+        int depth = 0;
+        while (p < end) {
+            char c = *p;
+            if (inString) {
+                if (escaped) escaped = FALSE;
+                else if (c == '\\') escaped = TRUE;
+                else if (c == '"') inString = FALSE;
+            } else {
+                if (c == '"') inString = TRUE;
+                else if (c == '{') ++depth;
+                else if (c == '}') {
+                    --depth;
+                    if (depth == 0) {
+                        ++p;
+                        break;
+                    }
+                }
+            }
+            ++p;
+        }
+        const char* objectEnd = p;
+        WCHAR id[MAX_TEXT] = L"";
+        if (objectEnd > objectStart && JsonStringInObject(objectStart, objectEnd, "id", id, _countof(id)) && id[0]) {
+            BOOL exists = FALSE;
+            for (int i = 0; i < g_savedOrderCount; ++i) {
+                if (_wcsicmp(g_savedOrder[i], id) == 0) {
+                    exists = TRUE;
+                    break;
+                }
+            }
+            if (!exists) {
+                wcsncpy(g_savedOrder[g_savedOrderCount], id, MAX_TEXT - 1);
+                g_savedOrder[g_savedOrderCount][MAX_TEXT - 1] = 0;
+                ++g_savedOrderCount;
+            }
+        }
+    }
+    AppendLogf(L"Loaded settings.save order entries=%d", g_savedOrderCount);
+    return g_savedOrderCount > 0;
 }
 
 static BOOL IsChineseLanguage(const WCHAR* lang) {
@@ -1390,6 +1448,30 @@ static BOOL OrdersAfter(const ModInfo* mod, const WCHAR* depId) {
     return FALSE;
 }
 
+static void ApplyVisualDependencyIndentPreservingOrder(void) {
+    for (int i = 0; i < g_modCount; ++i) {
+        g_mods[i].depth = 0;
+    }
+    for (int pass = 0; pass < MAX_DEPS; ++pass) {
+        BOOL changed = FALSE;
+        for (int i = 0; i < g_modCount; ++i) {
+            int depth = 0;
+            for (int j = 0; j < i; ++j) {
+                if (OrdersAfter(&g_mods[i], g_mods[j].id)) {
+                    int candidate = g_mods[j].depth + 1;
+                    if (candidate > depth) depth = candidate;
+                }
+            }
+            if (depth > 4) depth = 4;
+            if (depth != g_mods[i].depth) {
+                g_mods[i].depth = depth;
+                changed = TRUE;
+            }
+        }
+        if (!changed) break;
+    }
+}
+
 static BOOL ValidateDependencyOrder(WCHAR* outMessage, int cap) {
     for (int i = 0; i < g_modCount; ++i) {
         for (int d = 0; d < g_mods[i].depCount; ++d) {
@@ -1822,6 +1904,13 @@ static void SortModsByDependencies(void) {
     HeapFree(GetProcessHeap(), 0, placed);
 }
 
+static void SortModsByCurrentSettings(void) {
+    CanonicalizeDependencyIds();
+    if (g_savedOrderCount > 0) ApplySavedOrderBeforeDependencySort();
+    else qsort(g_mods, g_modCount, sizeof(ModInfo), CmpMods);
+    ApplyVisualDependencyIndentPreservingOrder();
+}
+
 static void BackupSettings(void) {
     WCHAR dir[MAX_PATH * 2], dst[MAX_PATH * 2], name[128];
     JoinPath(dir, _countof(dir), g_appDir, L"ModTheSpire2Data");
@@ -1998,9 +2087,15 @@ static void WriteSettings(BOOL modded) {
 static void RefreshList(void) {
     ListView_DeleteAllItems(g_list);
     g_modCount = 0;
-    LoadSavedOrder();
-    LoadSavedEnabled();
+    g_savedEnabledCount = 0;
     LoadGameVersion();
+    DWORD size = 0;
+    char* settings = ReadFileBytes(g_settingsFile, &size);
+    if (settings) {
+        LoadSettingsOrderFromBytes(settings, size);
+    } else {
+        g_savedOrderCount = 0;
+    }
     WCHAR root[MAX_PATH * 2], workshop[MAX_PATH * 2];
     swprintf(root, _countof(root), L"%ls\\mods", g_gameDir);
     AppendLogf(L"Refresh appDir=%ls", g_appDir);
@@ -2009,10 +2104,8 @@ static void RefreshList(void) {
     DiscoverRoot(root, L"Local");
     FindWorkshopDir(workshop, _countof(workshop));
     DiscoverRoot(workshop, L"Workshop");
-    SortModsByDependencies();
+    SortModsByCurrentSettings();
     AppendLogf(L"Refresh total mods=%d", g_modCount);
-    DWORD size = 0;
-    char* settings = ReadFileBytes(g_settingsFile, &size);
     g_enforcingChecks = TRUE;
     for (int i = 0; i < g_modCount; ++i) {
         WCHAR displayName[MAX_TEXT + 32];
@@ -2035,9 +2128,7 @@ static void RefreshList(void) {
         WCHAR depText[MAX_TEXT] = L"";
         BuildDependencyText(i, depText, _countof(depText));
         ListView_SetItemText(g_list, i, 5, depText);
-        if (g_savedEnabledCount > 0) {
-            if (IdInSavedEnabled(g_mods[i].id)) ListView_SetCheckState(g_list, i, TRUE);
-        } else if (settings && JsonBoolAfterId(settings, g_mods[i].id)) {
+        if (settings && JsonBoolAfterId(settings, g_mods[i].id)) {
             ListView_SetCheckState(g_list, i, TRUE);
         }
         WCHAR statusText[MAX_TEXT] = L"";
@@ -2054,7 +2145,7 @@ static void RefreshList(void) {
     } else if (pruned > 0) {
         swprintf(status, _countof(status), L"Found %d mods. Removed %d invalid saved selection(s).", g_modCount, pruned);
     } else {
-        swprintf(status, _countof(status), L"Found %d mods. Custom order entries: %d.", g_modCount, g_savedOrderCount);
+        swprintf(status, _countof(status), L"Found %d mods. Showing current game settings.", g_modCount);
     }
     SetWindowTextW(g_status, status);
 }
@@ -2524,8 +2615,9 @@ static void ResetSavedOrder(void) {
 
 static void RefreshProfiles(void) {
     if (!g_profileCombo) return;
+    g_refreshingProfiles = TRUE;
     SendMessageW(g_profileCombo, CB_RESETCONTENT, 0, 0);
-    SendMessageW(g_profileCombo, CB_ADDSTRING, 0, (LPARAM)L"default");
+    SendMessageW(g_profileCombo, CB_ADDSTRING, 0, (LPARAM)CURRENT_PROFILE_LABEL);
     WCHAR dir[MAX_PATH * 2], search[MAX_PATH * 2];
     GetProfilesDir(dir, _countof(dir));
     swprintf(search, _countof(search), L"%ls\\*.txt", dir);
@@ -2541,22 +2633,32 @@ static void RefreshProfiles(void) {
             name[_countof(name) - 1] = 0;
             WCHAR* dot = wcsrchr(name, L'.');
             if (dot) *dot = 0;
+            if (_wcsicmp(name, CURRENT_PROFILE_LABEL) == 0) continue;
             if (name[0]) SendMessageW(g_profileCombo, CB_ADDSTRING, 0, (LPARAM)name);
         } while (FindNextFileW(h, &fd));
         FindClose(h);
     }
-    SetWindowTextW(g_profileCombo, L"default");
+    SendMessageW(g_profileCombo, CB_SETCURSEL, 0, 0);
+    g_refreshingProfiles = FALSE;
 }
 
 static void GetCurrentProfileName(WCHAR* out, int cap) {
     GetWindowTextW(g_profileCombo, out, cap);
-    if (!out[0]) wcsncpy(out, L"default", cap - 1);
+    if (!out[0]) wcsncpy(out, CURRENT_PROFILE_LABEL, cap - 1);
     out[cap - 1] = 0;
+}
+
+static BOOL IsCurrentSettingsProfile(const WCHAR* profile) {
+    return !profile || !profile[0] || _wcsicmp(profile, CURRENT_PROFILE_LABEL) == 0;
 }
 
 static void SaveNamedProfile(void) {
     WCHAR profile[MAX_PROFILE], path[MAX_PATH * 2], enabledPath[MAX_PATH * 2];
     GetCurrentProfileName(profile, _countof(profile));
+    if (IsCurrentSettingsProfile(profile)) {
+        MessageBoxW(NULL, L"Type a profile name before saving. Current Game Settings is a live view of settings.save.", L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
+        return;
+    }
     BOOL repaired = RepairDependencyOrderInPlace();
     RebuildListPreservingChecks(GetSelectedListIndex());
     GetProfilePath(profile, path, _countof(path));
@@ -2642,16 +2744,18 @@ static BOOL LoadOrderFromPath(const WCHAR* path) {
 static void LoadNamedProfile(void) {
     WCHAR profile[MAX_PROFILE], path[MAX_PATH * 2], enabledPath[MAX_PATH * 2];
     GetCurrentProfileName(profile, _countof(profile));
-    if (_wcsicmp(profile, L"default") == 0) GetLoadOrderPath(path, _countof(path));
-    else GetProfilePath(profile, path, _countof(path));
+    if (IsCurrentSettingsProfile(profile)) {
+        RefreshList();
+        SetWindowTextW(g_status, L"Reloaded current game settings from settings.save.");
+        return;
+    }
+    GetProfilePath(profile, path, _countof(path));
     BOOL repaired = LoadOrderFromPath(path);
-    if (_wcsicmp(profile, L"default") != 0) {
-        GetProfileEnabledPath(profile, enabledPath, _countof(enabledPath));
-        if (LoadEnabledFromPathToList(enabledPath)) {
-            SetWindowTextW(g_status, repaired
-                ? L"Named profile loaded with enabled mods. Order was adjusted to satisfy dependencies."
-                : L"Named order and enabled profile loaded. Save Order to make it default.");
-        }
+    GetProfileEnabledPath(profile, enabledPath, _countof(enabledPath));
+    if (LoadEnabledFromPathToList(enabledPath)) {
+        SetWindowTextW(g_status, repaired
+            ? L"Named profile loaded with enabled mods. Order was adjusted to satisfy dependencies."
+            : L"Named order and enabled profile loaded. Save Order to make it default.");
     }
 }
 
@@ -2839,9 +2943,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         g_orderEdit = CreateWindowW(L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 498, 594, 50, 28, hwnd, (HMENU)107, g_instance, NULL);
         g_btnApplyOrder = CreateWindowW(L"BUTTON", L"Set", WS_CHILD | WS_VISIBLE, 556, 594, 60, 30, hwnd, (HMENU)108, g_instance, NULL);
         CreateWindowW(L"STATIC", L"Profiles", WS_CHILD | WS_VISIBLE, 640, 570, 70, 20, hwnd, NULL, g_instance, NULL);
-        g_profileCombo = CreateWindowW(WC_COMBOBOXW, L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWN | WS_VSCROLL, 640, 594, 142, 120, hwnd, (HMENU)109, g_instance, NULL);
-        g_btnSaveProfile = CreateWindowW(L"BUTTON", L"Save Profile", WS_CHILD | WS_VISIBLE, 790, 594, 92, 30, hwnd, (HMENU)110, g_instance, NULL);
-        g_btnLoadProfile = CreateWindowW(L"BUTTON", L"Load Profile", WS_CHILD | WS_VISIBLE, 890, 594, 88, 30, hwnd, (HMENU)111, g_instance, NULL);
+        g_profileCombo = CreateWindowW(WC_COMBOBOXW, L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWN | WS_VSCROLL, 640, 594, 228, 120, hwnd, (HMENU)109, g_instance, NULL);
+        g_btnSaveProfile = CreateWindowW(L"BUTTON", L"Save Profile", WS_CHILD | WS_VISIBLE, 878, 594, 100, 30, hwnd, (HMENU)110, g_instance, NULL);
         g_btnRefresh = CreateWindowW(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE, 20, 640, 92, 34, hwnd, (HMENU)100, g_instance, NULL);
         g_btnVanilla = CreateWindowW(L"BUTTON", L"Vanilla", WS_CHILD | WS_VISIBLE, 124, 640, 120, 34, hwnd, (HMENU)101, g_instance, NULL);
         g_btnLaunch = CreateWindowW(L"BUTTON", L"Launch Selected", WS_CHILD | WS_VISIBLE, 256, 640, 174, 34, hwnd, (HMENU)102, g_instance, NULL);
@@ -2861,7 +2964,6 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SendMessageW(g_btnApplyOrder, WM_SETFONT, (WPARAM)g_font, TRUE);
             SendMessageW(g_profileCombo, WM_SETFONT, (WPARAM)g_font, TRUE);
             SendMessageW(g_btnSaveProfile, WM_SETFONT, (WPARAM)g_font, TRUE);
-            SendMessageW(g_btnLoadProfile, WM_SETFONT, (WPARAM)g_font, TRUE);
         }
         if (g_titleFont) SendMessageW(g_title, WM_SETFONT, (WPARAM)g_titleFont, TRUE);
         RefreshProfiles();
@@ -2882,8 +2984,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (LOWORD(wp) == 105 || (HWND)lp == g_btnSaveOrder) SaveCurrentOrder();
         if (LOWORD(wp) == 106 || (HWND)lp == g_btnResetOrder) ResetSavedOrder();
         if (LOWORD(wp) == 108 || (HWND)lp == g_btnApplyOrder) ApplySelectedOrderNumber();
+        if (LOWORD(wp) == 109 && HIWORD(wp) == CBN_SELCHANGE && !g_refreshingProfiles) LoadNamedProfile();
         if (LOWORD(wp) == 110 || (HWND)lp == g_btnSaveProfile) SaveNamedProfile();
-        if (LOWORD(wp) == 111 || (HWND)lp == g_btnLoadProfile) LoadNamedProfile();
         break;
     case WM_NOTIFY:
         if (((LPNMHDR)lp)->hwndFrom == g_list && ((LPNMHDR)lp)->code == LVN_ITEMCHANGED) {

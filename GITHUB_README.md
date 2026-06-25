@@ -19,9 +19,11 @@ https://github.com/grassdog0/MTS2
 - Compatible with standard mod JSON files and Workshop mods that only provide `mod_manifest.json`.
 - Manual load order controls: Move Up, Move Down, numeric order entry, Save Order, Reset Order.
 - Named order profiles.
+- Launcher default state follows the current game `settings.save` order and enabled mods for compatibility with other order managers.
+- Selecting a named profile applies it immediately; selecting `Current Game Settings` reloads from `settings.save`.
 - Linux/macOS scripts can launch Vanilla, saved enabled mods, or named profiles from `ModTheSpire2Data`.
 - Saved enabled-mod selections in `ModTheSpire2Data/enabled-mods.txt`.
-- One-time Vanilla launch does not erase the saved enabled-mod selection.
+- Vanilla launch is reflected in the next default `Current Game Settings` view, while named profiles remain available.
 - In-game ModTheSpire2 management entry on the game's Mod Settings page.
 - Clean in-game restart helper for changing whole-mod enablement through the launcher.
 - Restart-required treatment for DLL/PCK/UI/gameplay/unknown whole-mod changes.
@@ -34,6 +36,8 @@ https://github.com/grassdog0/MTS2
 ModTheSpire2 itself is restart-required. It ships a DLL and patches game UI, so disabling it cannot unload the already-loaded code during the current session.
 
 Whole-mod enablement is managed before startup. The in-game companion does not claim it can safely unload already-loaded DLL/PCK/content/UI mods inside the current game process. Use `Close and Open Launcher` to change enabled mods or profiles.
+
+The Windows launcher's default combo entry is `Current Game Settings`. It reads the current `settings.save` directly, including order and enabled state written by the base game or other mod-order tools. ModTheSpire2 only writes `settings.save` when the player launches Vanilla or Launch Selected, and named profiles remain explicit presets.
 
 Steam Workshop cannot set Steam launch options automatically. Players who want Steam's Play button to open ModTheSpire2 first must set:
 

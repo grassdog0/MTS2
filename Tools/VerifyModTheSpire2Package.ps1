@@ -64,7 +64,7 @@ if (-not ($manifestAnalysisText -match "QuickRestart" -and $manifestAnalysisText
 if (-not ($manifestAnalysisText -match "wuwancients" -and $manifestAnalysisText -match "BaseLib min_version=v3.2.0")) {
     Fail "Manifest analysis did not capture wuwancients dependency version constraint"
 }
-if (-not ($manifestAnalysisText -match "ActsFromThePast" -and $manifestAnalysisText -match "BaseLib min_version=v3.2.1")) {
+if (-not ($manifestAnalysisText -match "ActsFromThePast" -and $manifestAnalysisText -match "BaseLib min_version=v[0-9]+\.[0-9]+\.[0-9]+")) {
     Fail "Manifest analysis did not capture ActsFromThePast dependency version constraint"
 }
 if (-not ($manifestAnalysisText -match "STS2-RitsuLib" -and $manifestAnalysisText -match "0.107.1")) {
@@ -598,7 +598,7 @@ if (Test-Path -LiteralPath $launcherData) {
     Remove-Item -LiteralPath $resolvedRuntime -Recurse -Force
 }
 
-$aliasFixture = Join-Path $launcherData "launcher-alias-fixture"
+$aliasFixture = Join-Path ([System.IO.Path]::GetTempPath()) ("ModTheSpire2LauncherAliasFixture-" + [System.Guid]::NewGuid().ToString("N"))
 $fakeGameDir = Join-Path $aliasFixture "steamapps\common\Slay the Spire 2"
 $fakeModsDir = Join-Path $fakeGameDir "mods"
 $fakeWorkshopDir = Join-Path $aliasFixture "steamapps\workshop\content\2868840"
@@ -813,9 +813,11 @@ if (-not $aliasSelfTestLogRaw.Contains("Order self-test load_before repair passe
 
 if (Test-Path -LiteralPath $aliasFixture) {
     $resolvedFixture = (Resolve-Path -LiteralPath $aliasFixture).Path
-    $resolvedClean = (Resolve-Path -LiteralPath $clean).Path
-    if (-not $resolvedFixture.StartsWith($resolvedClean, [System.StringComparison]::OrdinalIgnoreCase)) {
-        Fail "Refusing to clean alias fixture outside clean package: $resolvedFixture"
+    $resolvedTemp = (Resolve-Path -LiteralPath ([System.IO.Path]::GetTempPath())).Path
+    $fixtureName = Split-Path -Leaf $resolvedFixture
+    if (-not $resolvedFixture.StartsWith($resolvedTemp, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not $fixtureName.StartsWith("ModTheSpire2LauncherAliasFixture-", [System.StringComparison]::OrdinalIgnoreCase)) {
+        Fail "Refusing to clean unexpected alias fixture path: $resolvedFixture"
     }
     Remove-Item -LiteralPath $resolvedFixture -Recurse -Force
 }

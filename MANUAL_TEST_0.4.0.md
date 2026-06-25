@@ -114,30 +114,38 @@ Version : 0.4.0
 
 ## Load Order And Profiles
 
-1. Check one independent mod and leave an adjacent independent mod unchecked.
-2. Move the checked mod up or down.
-3. Confirm the checkbox follows that mod, not the row number.
-4. Select the first mod and click `Move Up`.
-5. Confirm the launcher stays open and the order does not change.
-6. Select the last mod and click `Move Down`.
-7. Confirm the launcher stays open and the order does not change.
-8. Select a mod, enter a natural number in `Row`, and click `Set`.
-9. Confirm the mod moves to that row number.
-10. Confirm values below 1 are treated as 1 and values above the mod count are treated as the last row.
-11. If a move violates dependency order, confirm the launcher repairs it and reports that order was adjusted.
-12. Click `Save Order`.
-13. Confirm both files exist:
+1. Before opening the launcher, change mod enabled state/order once through the game or another mod manager if available.
+2. Open the launcher and confirm the initial order and checked mods match the current `settings.save`.
+3. Confirm dependent mods can appear visually indented under earlier dependencies without changing the `settings.save` order.
+4. Confirm there is no separate `Load Profile` button.
+5. Confirm the profile combo shows `Current Game Settings`.
+6. Check one independent mod and leave an adjacent independent mod unchecked.
+7. Move the checked mod up or down.
+8. Confirm the checkbox follows that mod, not the row number.
+9. Select the first mod and click `Move Up`.
+10. Confirm the launcher stays open and the order does not change.
+11. Select the last mod and click `Move Down`.
+12. Confirm the launcher stays open and the order does not change.
+13. Select a mod, enter a natural number in `Row`, and click `Set`.
+14. Confirm the mod moves to that row number.
+15. Confirm values below 1 are treated as 1 and values above the mod count are treated as the last row.
+16. If a move violates dependency order, confirm the launcher repairs it and reports that order was adjusted.
+17. Click `Save Order`.
+18. Confirm both files exist:
 
 ```text
 ModTheSpire2Data\load-order.txt
 ModTheSpire2Data\enabled-mods.txt
 ```
 
-14. Save a named profile with custom order and selected mods.
-15. Change both order and checked mods.
-16. Load the named profile.
-17. Confirm both order and checked mods are restored.
-18. Confirm the profile sidecar exists:
+19. Try to save while the combo says `Current Game Settings`; confirm the launcher asks for a profile name instead of creating a default profile.
+20. Type a named profile with custom order and selected mods, then click `Save Profile`.
+21. Change both order and checked mods.
+22. Select the named profile from the profile combo.
+23. Confirm both order and checked mods are restored immediately.
+24. Select `Current Game Settings` from the combo.
+25. Confirm the list reloads from `settings.save`.
+26. Confirm the profile sidecar exists:
 
 ```text
 ModTheSpire2Data\order-profiles\<profile>.enabled.txt
@@ -148,8 +156,8 @@ ModTheSpire2Data\order-profiles\<profile>.enabled.txt
 1. Select some mods and save the order/profile.
 2. Click `Vanilla`.
 3. After the game starts, close it and start the launcher again.
-4. Confirm the previously saved checked mods are restored.
-5. Confirm Vanilla is one-time and does not clear `enabled-mods.txt`.
+4. Confirm the launcher default reflects the current `settings.save` vanilla state.
+5. Confirm saved named profiles still exist and can be selected from the profile combo.
 
 ## Launch Selected
 
@@ -157,7 +165,7 @@ ModTheSpire2Data\order-profiles\<profile>.enabled.txt
 2. Click `Launch Selected`.
 3. Confirm the game starts with the selected mods.
 4. Close the game.
-5. Reopen the launcher and confirm the same selected mods are restored.
+5. Reopen the launcher and confirm the same selected mods are shown because they are now in `settings.save`.
 
 ## Package Content
 
