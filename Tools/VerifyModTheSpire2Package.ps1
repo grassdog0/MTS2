@@ -100,6 +100,9 @@ if (-not ($companionSource.Contains("CreateIconButton") -and $companionSource.Co
 if (-not ($companionSource.Contains("BuildRestartLauncherArguments") -and $companionSource.Contains("System.Environment.GetCommandLineArgs()") -and $companionSource.Contains('args += " -- " + QuoteArg(current[0])') -and $companionSource.Contains("renderer flags such as --rendering-driver opengl3 are preserved"))) {
     Fail "Companion source no longer forwards the current game command line to the launcher restart flow"
 }
+if (-not ($companionSource.Contains("UiLayoutStore") -and $companionSource.Contains("ui-layout.json") -and $companionSource.Contains("AttachLongPressDrag") -and $companionSource.Contains("AttachDragSurface"))) {
+    Fail "Companion source no longer supports persistent draggable ModTheSpire2 UI controls"
+}
 if ($companionSource.Contains("Apply Hot Changes") -or $companionSource.Contains("Apply selected Runtime Hot-Apply and Apply at Main Menu changes.")) {
     Fail "Companion source still exposes player-facing Hot-Apply controls in the clean restart UI"
 }

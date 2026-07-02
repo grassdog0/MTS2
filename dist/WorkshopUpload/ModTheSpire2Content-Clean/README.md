@@ -16,21 +16,21 @@ Current version: `0.4.0`.
 - Blocks selecting a dependent mod until its required mod is selected in the Windows launcher.
 - Detects standard mod JSON files, Workshop `mod_manifest.json` layouts, legacy `pck_name` manifests, and explicit-id `.manifest` sidecar mod manifests without creating duplicate entries.
 - Resolves dependencies by mod id, unique display name, and local Workshop numeric folder id in the Windows launcher.
-- Lets players move mods up/down, set a numeric order, save a custom load order, and reset that order in the Windows launcher.
+- Lets players move mods up/down, set a numeric order, and save named launcher profiles in the Windows launcher.
 - Opens the Windows launcher from the current `settings.save` order and enabled state, making it friendlier with other order managers.
 - Supports named launcher order profiles.
-- The in-game ModTheSpire2 management overlay shows the current mod state and can close the game, then reopen the launcher for mod changes.
+- The in-game `ModTheSpire2 Launcher` button opens the Close and Open Launcher confirmation so players can safely change whole-mod enablement before restart.
 - Saves ModTheSpire2 state in `ModTheSpire2Data` inside this mod folder.
 - Backs up `settings.save` before writing mod enablement or load-order changes.
 
 ## Important Safety Notes
 
-- The launcher's default view is `Current Game Settings`, read from the game's current `settings.save`.
-- `Vanilla` starts the game with mods disabled and the next default launcher view will reflect that vanilla `settings.save` state.
+- The launcher's live view is `Current settings.save`, read from the game's current `settings.save`.
+- `Vanilla` starts the game with mods disabled for that launch while preserving the per-mod list and order for later modded launches.
 - Named profiles are separate saved presets and are not deleted by Vanilla.
 - `Launch Selected` on Windows saves the currently checked mods and then starts the game with those mods enabled.
 - Linux/macOS scripts are first-pass lightweight launchers. They use saved enabled mods or named profiles rather than a full checkbox GUI.
-- `Save Order` on Windows saves both load order and enabled mod selection.
+- `Save` on Windows saves the current load order and enabled mod selection into the selected or typed profile name.
 - `Close and Open Launcher` first closes the current game, then opens the launcher. This avoids running two Slay the Spire 2 instances at once.
 - `Close and Open Launcher` forwards the current game command line to the launcher, so renderer flags such as `--rendering-driver opengl3` are preserved for the next launch.
 - The standalone `Open Launcher` action was intentionally removed from the in-game overlay because launching another game instance while the current one is still running can risk settings/save conflicts.
@@ -49,13 +49,6 @@ To change enabled mods on Windows:
 4. Confirm the restart dialog.
 5. Select Vanilla or the desired mod profile in the launcher.
 6. Start the game again.
-
-The in-game overlay still shows useful status:
-
-- mods enabled for the current launch
-- mods loaded in the current session
-- disabled mods detected in local or Workshop folders
-- load-order information that will be used by the launcher
 
 ModTheSpire2 itself is restart-required. It changes the game's UI through a DLL/Harmony patch, so disabling it cannot unload the already-loaded code during the current session.
 
@@ -106,45 +99,33 @@ Sidecar `.manifest` files are handled conservatively. A `.manifest` file must de
 
 ## Load Order And Profiles
 
-The Windows launcher can move mods up/down, apply a numeric order, and save a custom load order. The in-game management overlay can also save the same order file:
+The Windows launcher can move mods up/down, apply a numeric order, and save named profiles. Dependency rules are enforced by the Windows launcher so required mods stay before mods that depend on them. Order-only `load_after` and `load_before` hints are also repaired when the referenced mod is installed.
 
-```text
-ModTheSpire2Data/load-order.txt
-```
+The launcher's live `Current settings.save` view is read directly from the game's current `settings.save`. This means changes made by the game, RitsuLib, Better Mod Menu, or another order manager are reflected the next time ModTheSpire2 opens.
 
-This file stores one mod id per line. Dependency rules are enforced by the Windows launcher so required mods stay before mods that depend on them. Order-only `load_after` and `load_before` hints are also repaired when the referenced mod is installed.
-
-The launcher's default `Current Game Settings` view is read directly from the game's current `settings.save`. This means changes made by the game, RitsuLib, Better Mod Menu, or another order manager are reflected the next time ModTheSpire2 opens.
-
-`Save Order` creates ModTheSpire2's explicit saved order file:
-
-```text
-ModTheSpire2Data/load-order.txt
-```
-
-Enabled mod selections saved by ModTheSpire2 are stored separately:
-
-```text
-ModTheSpire2Data/enabled-mods.txt
-```
-
-This file stores one enabled mod id per line. It is updated by `Save Order` and `Launch Selected`; the default launcher view still follows `settings.save` unless a named profile is selected.
-
-Named order profiles are stored under:
+Named profiles are stored under:
 
 ```text
 ModTheSpire2Data/order-profiles/
 ```
 
-Each named profile can also have a sidecar enabled-mod file:
+Each profile stores one mod id per line. Each named profile can also have a sidecar enabled-mod file:
 
 ```text
 ModTheSpire2Data/order-profiles/<profile>.enabled.txt
 ```
 
-The Linux/macOS scripts can launch Vanilla, the saved enabled-mod list, or a named profile that already exists in this folder.
+Use the `Save` button to save the current visible order and checked mods into the selected or typed profile name. If the profile already exists, it is updated. If it does not exist, it is created.
 
-On Windows, choosing a named profile from the launcher profile list applies it immediately. Choose `Current Game Settings` to return to the live `settings.save` view.
+The legacy saved enabled-mod list is still stored at:
+
+```text
+ModTheSpire2Data/enabled-mods.txt
+```
+
+The Linux/macOS scripts can launch Vanilla, the saved enabled-mod list, or a named profile that already exists.
+
+On Windows, choosing a named profile from the launcher profile list applies it immediately. Choose `Current settings.save` to return to the live `settings.save` view.
 
 Before overwriting `load-order.txt`, `enabled-mods.txt`, or named order profile files, the Windows launcher copies the previous file into:
 

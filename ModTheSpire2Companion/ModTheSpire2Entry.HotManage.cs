@@ -123,28 +123,40 @@ internal static class ModdingScreenButton
                 return;
             }
 
-            var parent = screen.FindChild("ModsBorder", recursive: true, owned: false) as Control ?? screen;
-            var template = parent.FindChild("GetModsButton", recursive: true, owned: false) as Control;
+            var modsBorder = screen.FindChild("ModsBorder", recursive: true, owned: false) as Control;
+            var template = modsBorder?.FindChild("GetModsButton", recursive: true, owned: false) as Control
+                ?? screen.FindChild("GetModsButton", recursive: true, owned: false) as Control;
+            var buttonSize = template?.Size ?? new Vector2(260, 48);
+            if (buttonSize.X <= 0 || buttonSize.Y <= 0)
+            {
+                buttonSize = template?.CustomMinimumSize ?? new Vector2(260, 56);
+            }
+            var parent = modsBorder ?? template?.GetParent() as Control ?? screen;
+
             var restart = new Button
             {
                 Name = RestartButtonNodeName,
                 Text = "ModTheSpire2 Launcher",
-                CustomMinimumSize = template?.CustomMinimumSize ?? new Vector2(260, 56),
-                Size = template?.Size ?? new Vector2(260, 48),
                 Position = FindButtonPosition(parent),
                 AnchorsPreset = (int)Control.LayoutPreset.TopLeft,
-                TooltipText = "ModTheSpire2 Launcher",
+                CustomMinimumSize = buttonSize,
+                Size = buttonSize,
+                TooltipText = "Open ModTheSpire2 management.",
                 MouseFilter = Control.MouseFilterEnum.Stop,
                 Visible = true,
                 TopLevel = false,
                 ZIndex = 100
             };
             UiStyle.ApplyButton(restart);
-            restart.Pressed += () => ModManagementDialog.Show(screen);
+            restart.Pressed += () =>
+            {
+                CompanionLog.Write("Modding screen launcher clicked");
+                RestartToLauncher.ShowConfirm(screen);
+            };
             parent.AddChild(restart);
             parent.MoveChild(restart, parent.GetChildCount() - 1);
             restart.Show();
-            CompanionLog.Write("Visible fixed modding screen button added from " + source);
+            CompanionLog.Write("Visible modding screen button added from " + source + " under " + parent.GetPath());
         }
         catch (Exception ex)
         {
@@ -156,14 +168,16 @@ internal static class ModdingScreenButton
     {
         try
         {
-            if (parent.FindChild("InstalledModsTitle", recursive: true, owned: false) is Control title)
+            if (parent is Control parentControl &&
+                parent.FindChild("InstalledModsTitle", recursive: true, owned: false) is Control title)
             {
-                var x = title.Position.X + title.Size.X + 28;
+                var localTitlePosition = parentControl.GetGlobalTransform().AffineInverse() * title.GlobalPosition;
+                var x = localTitlePosition.X + title.Size.X + 28;
                 if (x < 260)
                 {
                     x = 260;
                 }
-                return new Vector2(x, title.Position.Y - 8);
+                return new Vector2(x, localTitlePosition.Y - 8);
             }
         }
         catch
@@ -171,6 +185,260 @@ internal static class ModdingScreenButton
         }
 
         return new Vector2(330, 16);
+    }
+}
+
+internal static class UiLayoutStore
+{
+    private static readonly object Gate = new();
+    private static System.Collections.Generic.Dictionary<string, StoredPosition>? cache;
+
+    public static Vector2? Load(string key)
+    {
+        try
+        {
+            var all = LoadAll();
+            return all.TryGetValue(key, out var stored) ? new Vector2(stored.X, stored.Y) : null;
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("UI layout load failed: " + ex.Message);
+            return null;
+        }
+    }
+
+    public static void Save(string key, Vector2 position)
+    {
+        try
+        {
+            lock (Gate)
+            {
+                var all = LoadAll();
+                all[key] = new StoredPosition(position.X, position.Y);
+                var path = GetPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                var json = JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+                CompanionLog.Write("UI layout saved " + key + "=" + position);
+            }
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("UI layout save failed: " + ex.Message);
+        }
+    }
+
+    private static System.Collections.Generic.Dictionary<string, StoredPosition> LoadAll()
+    {
+        lock (Gate)
+        {
+            if (cache is not null)
+            {
+                return cache;
+            }
+
+            var path = GetPath();
+            if (!File.Exists(path))
+            {
+                cache = new System.Collections.Generic.Dictionary<string, StoredPosition>(StringComparer.OrdinalIgnoreCase);
+                return cache;
+            }
+
+            var json = File.ReadAllText(path);
+            cache = JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<string, StoredPosition>>(json)
+                ?? new System.Collections.Generic.Dictionary<string, StoredPosition>(StringComparer.OrdinalIgnoreCase);
+            return cache;
+        }
+    }
+
+    private static string GetPath() => Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data", "ui-layout.json");
+
+    private sealed class StoredPosition
+    {
+        public StoredPosition()
+        {
+        }
+
+        public StoredPosition(float x, float y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public float X { get; set; }
+        public float Y { get; set; }
+    }
+}
+
+internal static class DraggableUi
+{
+    private const double LongPressSeconds = 0.35;
+
+    public static void AttachLongPressDrag(Control surface, Control target, Control boundsParent, string layoutKey)
+    {
+        var state = new DragState();
+        surface.MouseDefaultCursorShape = Control.CursorShape.Move;
+        surface.AddChild(new DragReleaseWatcher(state, target, boundsParent, layoutKey));
+        surface.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } mouse)
+            {
+                if (mouse.Pressed)
+                {
+                    state.Pressed = true;
+                    state.Dragging = false;
+                    state.PressTicks = DateTime.UtcNow.Ticks;
+                    state.PressGlobal = mouse.GlobalPosition;
+                    state.GrabOffset = mouse.GlobalPosition - target.GlobalPosition;
+                    surface.AcceptEvent();
+                    return;
+                }
+
+                if (!state.Pressed)
+                {
+                    return;
+                }
+
+                var wasDragging = state.Dragging;
+                state.Pressed = false;
+                state.Dragging = false;
+                if (wasDragging)
+                {
+                    SaveClamped(target, boundsParent, layoutKey);
+                    surface.AcceptEvent();
+                    return;
+                }
+
+                return;
+            }
+
+            if (input is InputEventMouseMotion motion && state.Pressed)
+            {
+                var held = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - state.PressTicks).TotalSeconds;
+                if (!state.Dragging && held >= LongPressSeconds)
+                {
+                    state.Dragging = true;
+                    CompanionLog.Write("UI drag started: " + layoutKey);
+                }
+                if (state.Dragging)
+                {
+                    MoveControl(target, boundsParent, motion.GlobalPosition - state.GrabOffset);
+                    surface.AcceptEvent();
+                }
+            }
+        };
+    }
+
+    public static void AttachDragSurface(Control surface, Control target, Control boundsParent, string layoutKey)
+    {
+        var state = new DragState();
+        surface.MouseDefaultCursorShape = Control.CursorShape.Move;
+        surface.TooltipText = "Drag to move. Position is remembered.";
+        surface.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } mouse)
+            {
+                if (mouse.Pressed)
+                {
+                    state.Pressed = true;
+                    state.Dragging = true;
+                    state.GrabOffset = mouse.GlobalPosition - target.GlobalPosition;
+                    surface.AcceptEvent();
+                    return;
+                }
+
+                if (state.Pressed)
+                {
+                    state.Pressed = false;
+                    state.Dragging = false;
+                    SaveClamped(target, boundsParent, layoutKey);
+                    surface.AcceptEvent();
+                }
+                return;
+            }
+
+            if (input is InputEventMouseMotion motion && state.Pressed)
+            {
+                MoveControl(target, boundsParent, motion.GlobalPosition - state.GrabOffset);
+                surface.AcceptEvent();
+            }
+        };
+    }
+
+    public static Vector2 ClampToParent(Vector2 position, Vector2 size, Vector2 parentSize)
+    {
+        var maxX = Math.Max(8, parentSize.X - size.X - 8);
+        var maxY = Math.Max(8, parentSize.Y - size.Y - 8);
+        return new Vector2(
+            Math.Clamp(position.X, 8, maxX),
+            Math.Clamp(position.Y, 8, maxY));
+    }
+
+    public static void MoveControl(Control target, Control boundsParent, Vector2 globalTopLeft)
+    {
+        var local = boundsParent.GetGlobalTransform().AffineInverse() * globalTopLeft;
+        var parentSize = boundsParent.GetViewportRect().Size;
+        target.Position = ClampToParent(local, target.Size, parentSize);
+    }
+
+    public static void SaveClamped(Control target, Control boundsParent, string layoutKey)
+    {
+        var parentSize = boundsParent.GetViewportRect().Size;
+        target.Position = ClampToParent(target.Position, target.Size, parentSize);
+        UiLayoutStore.Save(layoutKey, target.Position);
+    }
+
+    private static void FinishPress(DragState state, Control target, Control boundsParent, string layoutKey)
+    {
+        if (!state.Pressed)
+        {
+            return;
+        }
+
+        var wasDragging = state.Dragging;
+        state.Pressed = false;
+        state.Dragging = false;
+
+        if (wasDragging)
+        {
+            SaveClamped(target, boundsParent, layoutKey);
+        }
+    }
+
+    private sealed class DragState
+    {
+        public bool Pressed;
+        public bool Dragging;
+        public long PressTicks;
+        public Vector2 PressGlobal;
+        public Vector2 GrabOffset;
+    }
+
+    private sealed partial class DragReleaseWatcher : Node
+    {
+        private readonly DragState state;
+        private readonly Control target;
+        private readonly Control boundsParent;
+        private readonly string layoutKey;
+
+        public DragReleaseWatcher(DragState state, Control target, Control boundsParent, string layoutKey)
+        {
+            this.state = state;
+            this.target = target;
+            this.boundsParent = boundsParent;
+            this.layoutKey = layoutKey;
+        }
+
+        public override void _Process(double delta)
+        {
+            if (!state.Pressed || Input.IsMouseButtonPressed(MouseButton.Left))
+            {
+                return;
+            }
+
+            FinishPress(state, target, boundsParent, layoutKey);
+            CompanionLog.Write("UI press ended by process: " + layoutKey);
+        }
     }
 }
 
@@ -528,7 +796,7 @@ internal static class ModManagementDialog
                 Name = "ModTheSpire2ManagementDialog",
                 AnchorsPreset = (int)Control.LayoutPreset.FullRect,
                 MouseFilter = Control.MouseFilterEnum.Stop,
-                ZIndex = 400
+                ZIndex = 5000
             };
             void CloseDialog(string reason)
             {
@@ -588,8 +856,10 @@ internal static class ModManagementDialog
             var header = new HBoxContainer
             {
                 CustomMinimumSize = new Vector2(metrics.ContentWidth, 42),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                MouseFilter = Control.MouseFilterEnum.Stop
             };
+            DraggableUi.AttachDragSurface(header, panel, dialog, "management_panel");
             root.AddChild(header);
 
             var title = new Label
@@ -597,7 +867,8 @@ internal static class ModManagementDialog
                 Text = "ModTheSpire2 Management",
                 HorizontalAlignment = HorizontalAlignment.Center,
                 CustomMinimumSize = new Vector2(Math.Max(180, metrics.ContentWidth - 244), 34),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                MouseFilter = Control.MouseFilterEnum.Pass
             };
             UiStyle.ApplyTitle(title);
             header.AddChild(title);
@@ -695,9 +966,9 @@ internal static class ModManagementDialog
                 header.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
                 title.CustomMinimumSize = new Vector2(Math.Max(180, updated.ContentWidth - 244), 34);
                 intro.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
-                CenterPanel(dialog, panel);
+                PositionPanel(dialog, panel);
             };
-            CenterPanel(dialog, panel);
+            PositionPanel(dialog, panel);
             dialog.CallDeferred(Control.MethodName.GrabFocus);
             CompanionLog.Write("Management dialog shown. detected=" + mods.Length + " enabled=" + enabledMods.Length + " loaded=" + loadedMods.Length);
         }
@@ -1120,15 +1391,18 @@ internal static class ModManagementDialog
         CompanionLog.Write("Load order section shown entries=" + order.Count);
     }
 
-    private static void CenterPanel(Control root, Control panel)
+    private static void PositionPanel(Control root, Control panel)
     {
         var size = root.GetViewportRect().Size;
         var panelSize = UiMetrics.From(size).PanelSize;
         panel.CustomMinimumSize = panelSize;
         panel.Size = panelSize;
-        panel.Position = new Vector2(
-            Math.Max(8, (size.X - panelSize.X) * 0.5f),
-            Math.Max(8, (size.Y - panelSize.Y) * 0.5f));
+        var saved = UiLayoutStore.Load("management_panel");
+        panel.Position = saved is Vector2 position
+            ? DraggableUi.ClampToParent(position, panelSize, size)
+            : new Vector2(
+                Math.Max(8, (size.X - panelSize.X) * 0.5f),
+                Math.Max(8, (size.Y - panelSize.Y) * 0.5f));
         panel.Size = panelSize;
     }
 
@@ -3380,27 +3654,26 @@ internal static class LauncherActions
 internal static class ModConfigIntegration
 {
     private static bool s_registered;
-    private static bool s_attempted;
 
     public static void TryRegister()
     {
-        if (s_registered || s_attempted)
+        if (s_registered)
         {
             return;
         }
 
-        s_attempted = true;
         try
         {
-            var registryType = Type.GetType("BaseLib.Config.ModConfigRegistry, BaseLib", throwOnError: false);
-            var simpleConfigType = Type.GetType("BaseLib.Config.SimpleModConfig, BaseLib", throwOnError: false);
-            var buttonAttributeType = Type.GetType("BaseLib.Config.ConfigButtonAttribute, BaseLib", throwOnError: false);
+            var registryType = BaseLibReflection.FindType("BaseLib.Config.ModConfigRegistry");
+            var simpleConfigType = BaseLibReflection.FindType("BaseLib.Config.SimpleModConfig");
+            var buttonAttributeType = BaseLibReflection.FindType("BaseLib.Config.ConfigButtonAttribute");
             if (registryType is null || simpleConfigType is null || buttonAttributeType is null)
             {
                 CompanionLog.Write("BaseLib ModConfig not present");
                 return;
             }
 
+            BaseLibModConfigSubmenuPatch.TryPatchLate();
             var configType = DynamicModConfigType.Create(simpleConfigType, buttonAttributeType);
             var config = Activator.CreateInstance(configType);
             simpleConfigType.GetProperty("ModId")?.SetValue(config, "ModTheSpire2");
@@ -3416,14 +3689,101 @@ internal static class ModConfigIntegration
     }
 }
 
+internal static class BaseLibReflection
+{
+    public static Type? FindType(string fullName)
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var direct = assembly.GetType(fullName, throwOnError: false, ignoreCase: false);
+                if (direct is not null)
+                {
+                    return direct;
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                foreach (var type in SafeGetTypes(assembly))
+                {
+                    if (string.Equals(type.FullName, fullName, StringComparison.Ordinal))
+                    {
+                        return type;
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static System.Collections.Generic.IEnumerable<Type> SafeGetTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(type => type is not null)!;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+}
+
 [HarmonyPatch]
 internal static class BaseLibModConfigSubmenuPatch
 {
     private const string ButtonNodeName = "ModTheSpire2BaseLibButton";
+    private static bool s_latePatchAttempted;
+    private static bool s_latePatchSucceeded;
+
+    public static bool Prepare()
+    {
+        return BaseLibReflection.FindType("BaseLib.Config.UI.NModConfigSubmenu") is not null;
+    }
+
+    public static void TryPatchLate()
+    {
+        if (s_latePatchSucceeded || s_latePatchAttempted)
+        {
+            return;
+        }
+
+        var target = TargetMethod();
+        if (target is null)
+        {
+            return;
+        }
+
+        s_latePatchAttempted = true;
+        try
+        {
+            var postfix = typeof(BaseLibModConfigSubmenuPatch).GetMethod(nameof(Postfix), BindingFlags.Public | BindingFlags.Static);
+            new Harmony("HZDH.ModTheSpire2.BaseLibLate").Patch(target, postfix: postfix is null ? null : new HarmonyMethod(postfix));
+            s_latePatchSucceeded = true;
+            CompanionLog.Write("BaseLib submenu patch installed late");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("BaseLib submenu late patch failed: " + ex);
+        }
+    }
 
     public static MethodBase? TargetMethod()
     {
-        var type = Type.GetType("BaseLib.Config.UI.NModConfigSubmenu, BaseLib", throwOnError: false);
+        var type = BaseLibReflection.FindType("BaseLib.Config.UI.NModConfigSubmenu");
         return type?.GetMethod("_Ready", BindingFlags.Public | BindingFlags.Instance);
     }
 
@@ -3464,7 +3824,7 @@ internal static class BaseLibModConfigSubmenuPatch
 
     private static Control CreateBaseLibListButton(Node owner)
     {
-        var buttonType = Type.GetType("BaseLib.Config.UI.NModListButton, BaseLib", throwOnError: false);
+        var buttonType = BaseLibReflection.FindType("BaseLib.Config.UI.NModListButton");
         if (buttonType is not null)
         {
             try

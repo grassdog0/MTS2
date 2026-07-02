@@ -17,13 +17,13 @@ https://github.com/grassdog0/MTS2
 - Choose vanilla or selected mods before starting Slay the Spire 2.
 - Dependency-aware mod list. Dependent mods are shown under required mods and cannot be selected until dependencies are selected.
 - Compatible with standard mod JSON files and Workshop mods that only provide `mod_manifest.json`.
-- Manual load order controls: Move Up, Move Down, numeric order entry, Save Order, Reset Order.
-- Named order profiles.
+- Manual load order controls: Move Up, Move Down, numeric order entry, and named profile saving.
+- Named profiles save both load order and enabled selections. Select an existing profile or type a new profile name, then click `Save`; existing names are updated and new names are created.
 - Launcher default state follows the current game `settings.save` order and enabled mods for compatibility with other order managers.
-- Selecting a named profile applies it immediately; selecting `Current Game Settings` reloads from `settings.save`.
+- Selecting a named profile applies it immediately; selecting `Current settings.save` reloads from `settings.save`.
 - Linux/macOS scripts can launch Vanilla, saved enabled mods, or named profiles from `ModTheSpire2Data`.
 - Saved enabled-mod selections in `ModTheSpire2Data/enabled-mods.txt`.
-- Vanilla launch is reflected in the next default `Current Game Settings` view, while named profiles remain available.
+- Vanilla launch disables the global game mod switch for that launch but preserves the per-mod list and order for the next modded launch.
 - In-game ModTheSpire2 management entry on the game's Mod Settings page.
 - Clean in-game restart helper for changing whole-mod enablement through the launcher.
 - Restart-required treatment for DLL/PCK/UI/gameplay/unknown whole-mod changes.
@@ -37,7 +37,9 @@ ModTheSpire2 itself is restart-required. It ships a DLL and patches game UI, so 
 
 Whole-mod enablement is managed before startup. The in-game companion does not claim it can safely unload already-loaded DLL/PCK/content/UI mods inside the current game process. Use `Close and Open Launcher` to change enabled mods or profiles.
 
-The Windows launcher's default combo entry is `Current Game Settings`. It reads the current `settings.save` directly, including order and enabled state written by the base game or other mod-order tools. ModTheSpire2 only writes `settings.save` when the player launches Vanilla or Launch Selected, and named profiles remain explicit presets.
+The Windows launcher's default combo entry is `Current settings.save`. It reads the current `settings.save` directly, including order and enabled state written by the base game or other mod-order tools. ModTheSpire2 only writes `settings.save` when the player launches Vanilla or Launch Selected, and named profiles remain explicit presets.
+
+Use the `Save` button to save the currently visible launcher order and checked mods into the selected or typed profile name. `Current settings.save` is a live view and cannot be overwritten as a named profile.
 
 Steam Workshop cannot set Steam launch options automatically. Players who want Steam's Play button to open ModTheSpire2 first must set:
 

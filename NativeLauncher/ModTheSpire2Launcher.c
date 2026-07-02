@@ -18,7 +18,7 @@
 #define MAX_BUF 1048576
 #define MAX_DEPS 16
 #define MAX_PROFILE 128
-#define CURRENT_PROFILE_LABEL L"Current Game Settings"
+#define CURRENT_PROFILE_LABEL L"Current settings.save"
 
 typedef struct ModInfo {
     WCHAR id[MAX_TEXT];
@@ -41,8 +41,8 @@ typedef struct ModInfo {
 
 static HINSTANCE g_instance;
 static HWND g_list, g_status, g_gamePath, g_settingsPath, g_title, g_subtitle;
-static HWND g_btnRefresh, g_btnVanilla, g_btnLaunch, g_btnUp, g_btnDown, g_btnSaveOrder, g_btnResetOrder;
-static HWND g_orderEdit, g_btnApplyOrder, g_profileCombo, g_btnSaveProfile;
+static HWND g_btnRefresh, g_btnVanilla, g_btnLaunch, g_btnUp, g_btnDown, g_btnSaveOrder;
+static HWND g_orderEdit, g_btnApplyOrder, g_profileCombo;
 static HFONT g_font, g_titleFont;
 static HBRUSH g_bgBrush;
 static COLORREF g_bgColor = RGB(246, 243, 235);
@@ -78,6 +78,8 @@ static void EnforceDependencyChecks(int changedIndex);
 static int PruneInvalidChecks(void);
 static BOOL DirectoryHasSidecarManifest(const WCHAR* path);
 static void AppendLogf(const WCHAR* fmt, ...);
+static BOOL FindModListSpan(const char* json, DWORD size, DWORD* start, DWORD* len);
+static void SaveNamedProfile(void);
 
 static void DirName(WCHAR* path) {
     WCHAR* slash = wcsrchr(path, L'\\');
@@ -443,20 +445,55 @@ static void JsonDependencyVersionRequirementFromSingleValue(const char* p, WCHAR
 }
 
 static BOOL JsonBoolAfterId(const char* json, const WCHAR* id) {
-    char id8[MAX_TEXT * 4];
-    WideToUtf82(id, id8, sizeof(id8));
-    char pattern[MAX_TEXT * 4 + 16];
-    snprintf(pattern, sizeof(pattern), "\"id\"%*s:%*s\"%s\"", 0, "", 0, "", id8);
-    const char* p = strstr(json, id8);
-    if (!p) return FALSE;
-    const char* endObj = strchr(p, '}');
-    if (!endObj) endObj = p + strlen(p);
-    const char* e = strstr(p, "\"is_enabled\"");
-    if (!e || e > endObj) return FALSE;
-    e = strchr(e, ':');
-    if (!e || e > endObj) return FALSE;
-    e = SkipWs(e + 1);
-    return strncmp(e, "true", 4) == 0;
+    if (!json || !id || !id[0]) return FALSE;
+    DWORD size = (DWORD)strlen(json);
+    DWORD start = 0, len = 0;
+    const char* listStart = json;
+    const char* listEnd = json + size;
+    if (FindModListSpan(json, size, &start, &len)) {
+        listStart = json + start;
+        listEnd = listStart + len;
+    }
+
+    const char* p = listStart;
+    while (p < listEnd) {
+        if (*p != '{') {
+            ++p;
+            continue;
+        }
+        const char* objectStart = p;
+        BOOL inString = FALSE, escaped = FALSE;
+        int depth = 0;
+        while (p < listEnd) {
+            char c = *p;
+            if (inString) {
+                if (escaped) escaped = FALSE;
+                else if (c == '\\') escaped = TRUE;
+                else if (c == '"') inString = FALSE;
+            } else {
+                if (c == '"') inString = TRUE;
+                else if (c == '{') ++depth;
+                else if (c == '}') {
+                    --depth;
+                    if (depth == 0) {
+                        ++p;
+                        break;
+                    }
+                }
+            }
+            ++p;
+        }
+        const char* objectEnd = p;
+        WCHAR objectId[MAX_TEXT] = L"";
+        if (objectEnd > objectStart &&
+            JsonStringInObject(objectStart, objectEnd, "id", objectId, _countof(objectId)) &&
+            _wcsicmp(objectId, id) == 0) {
+            BOOL enabled = FALSE;
+            if (JsonBoolInObject(objectStart, objectEnd, "is_enabled", &enabled)) return enabled;
+            return FALSE;
+        }
+    }
+    return FALSE;
 }
 
 static BOOL JsonBoolValue(const char* json, const char* key) {
@@ -1178,11 +1215,10 @@ static void SanitizeProfileName(const WCHAR* input, WCHAR* out, int cap) {
     int j = 0;
     for (int i = 0; input && input[i] && j < cap - 1; ++i) {
         WCHAR c = input[i];
-        if ((c >= L'a' && c <= L'z') || (c >= L'A' && c <= L'Z') || (c >= L'0' && c <= L'9') || c == L'-' || c == L'_' || c == L' ') {
-            out[j++] = c;
-        }
+        if (c < 32 || wcschr(L"<>:\"/\\|?*", c)) continue;
+        out[j++] = c;
     }
-    while (j > 0 && out[j - 1] == L' ') --j;
+    while (j > 0 && (out[j - 1] == L' ' || out[j - 1] == L'.')) --j;
     out[j] = 0;
     if (!out[0]) wcsncpy(out, L"default", cap - 1);
     out[cap - 1] = 0;
@@ -1369,22 +1405,7 @@ static BOOL LoadEnabledFromPathToList(const WCHAR* path) {
 }
 
 static void SaveCurrentOrder(void) {
-    WCHAR path[MAX_PATH * 2];
-    BOOL repaired = RepairDependencyOrderInPlace();
-    RebuildListPreservingChecks(GetSelectedListIndex());
-    GetLoadOrderPath(path, _countof(path));
-    if (!SaveOrderToPath(path)) {
-        MessageBoxW(NULL, L"Could not save load-order.txt.", L"ModTheSpire2", MB_ICONERROR);
-        return;
-    }
-    if (!SaveCurrentEnabled()) {
-        MessageBoxW(NULL, L"Could not save enabled-mods.txt.", L"ModTheSpire2", MB_ICONERROR);
-        return;
-    }
-    LoadSavedOrder();
-    SetWindowTextW(g_status, repaired
-        ? L"Custom load order saved. Order was adjusted to satisfy dependencies."
-        : L"Custom load order and enabled mods saved.");
+    SaveNamedProfile();
 }
 
 static int SavedOrderRank(const WCHAR* id) {
@@ -1472,10 +1493,12 @@ static void ApplyVisualDependencyIndentPreservingOrder(void) {
     }
 }
 
-static BOOL ValidateDependencyOrder(WCHAR* outMessage, int cap) {
+static BOOL ValidateDependencyOrderCore(WCHAR* outMessage, int cap, BOOL selectedOnly) {
     for (int i = 0; i < g_modCount; ++i) {
+        if (selectedOnly && g_list && !ListView_GetCheckState(g_list, i)) continue;
         for (int d = 0; d < g_mods[i].depCount; ++d) {
             int depIndex = FindModIndexById(g_mods[i].deps[d]);
+            if (selectedOnly && depIndex >= 0 && g_list && !ListView_GetCheckState(g_list, depIndex)) continue;
             if (depIndex >= 0 && depIndex > i) {
                 if (outMessage && cap > 0) {
                     const WCHAR* modName = g_mods[i].name[0] ? g_mods[i].name : g_mods[i].id;
@@ -1487,6 +1510,7 @@ static BOOL ValidateDependencyOrder(WCHAR* outMessage, int cap) {
         }
         for (int d = 0; d < g_mods[i].orderAfterCount; ++d) {
             int depIndex = FindModIndexById(g_mods[i].orderAfter[d]);
+            if (selectedOnly && depIndex >= 0 && g_list && !ListView_GetCheckState(g_list, depIndex)) continue;
             if (depIndex >= 0 && depIndex > i) {
                 if (outMessage && cap > 0) {
                     const WCHAR* modName = g_mods[i].name[0] ? g_mods[i].name : g_mods[i].id;
@@ -1498,6 +1522,7 @@ static BOOL ValidateDependencyOrder(WCHAR* outMessage, int cap) {
         }
         for (int d = 0; d < g_mods[i].orderBeforeCount; ++d) {
             int targetIndex = FindModIndexById(g_mods[i].orderBefore[d]);
+            if (selectedOnly && targetIndex >= 0 && g_list && !ListView_GetCheckState(g_list, targetIndex)) continue;
             if (targetIndex >= 0 && targetIndex < i) {
                 if (outMessage && cap > 0) {
                     const WCHAR* modName = g_mods[i].name[0] ? g_mods[i].name : g_mods[i].id;
@@ -1510,6 +1535,14 @@ static BOOL ValidateDependencyOrder(WCHAR* outMessage, int cap) {
     }
     if (outMessage && cap > 0) outMessage[0] = 0;
     return TRUE;
+}
+
+static BOOL ValidateDependencyOrder(WCHAR* outMessage, int cap) {
+    return ValidateDependencyOrderCore(outMessage, cap, FALSE);
+}
+
+static BOOL ValidateSelectedDependencyOrder(WCHAR* outMessage, int cap) {
+    return ValidateDependencyOrderCore(outMessage, cap, TRUE);
 }
 
 static BOOL RepairDependencyOrderInPlace(void) {
@@ -2079,7 +2112,11 @@ static void WriteSettings(BOOL modded) {
     else replaced = ReplaceAll(json, &size, "\"mods_enabled\": true", "\"mods_enabled\": false");
     if (replaced) { HeapFree(GetProcessHeap(), 0, json); json = replaced; }
 
-    json = ReplaceModList(json, &size, modded);
+    if (modded) {
+        json = ReplaceModList(json, &size, TRUE);
+    } else {
+        AppendLog(L"Vanilla launch: preserving mod_list order and per-mod enabled states");
+    }
     WriteFileBytes(g_settingsFile, json, size);
     HeapFree(GetProcessHeap(), 0, json);
 }
@@ -2601,16 +2638,7 @@ static void ApplySelectedOrderNumber(void) {
     RebuildListPreservingChecks(selected);
     SetWindowTextW(g_status, repaired
         ? L"Order number applied. Order was adjusted to satisfy dependencies."
-        : L"Order number applied. Save Order to keep it.");
-}
-
-static void ResetSavedOrder(void) {
-    WCHAR path[MAX_PATH * 2];
-    GetLoadOrderPath(path, _countof(path));
-    DeleteFileW(path);
-    g_savedOrderCount = 0;
-    RefreshList();
-    SetWindowTextW(g_status, L"Custom load order reset.");
+        : L"Order number applied. Choose or type a profile name, then Save.");
 }
 
 static void RefreshProfiles(void) {
@@ -2642,6 +2670,21 @@ static void RefreshProfiles(void) {
     g_refreshingProfiles = FALSE;
 }
 
+static void SelectProfileByName(const WCHAR* profile) {
+    if (!g_profileCombo || !profile || !profile[0]) return;
+    int count = (int)SendMessageW(g_profileCombo, CB_GETCOUNT, 0, 0);
+    for (int i = 0; i < count; ++i) {
+        WCHAR item[MAX_PROFILE];
+        item[0] = 0;
+        SendMessageW(g_profileCombo, CB_GETLBTEXT, i, (LPARAM)item);
+        if (_wcsicmp(item, profile) == 0) {
+            SendMessageW(g_profileCombo, CB_SETCURSEL, i, 0);
+            return;
+        }
+    }
+    SetWindowTextW(g_profileCombo, profile);
+}
+
 static void GetCurrentProfileName(WCHAR* out, int cap) {
     GetWindowTextW(g_profileCombo, out, cap);
     if (!out[0]) wcsncpy(out, CURRENT_PROFILE_LABEL, cap - 1);
@@ -2656,11 +2699,9 @@ static void SaveNamedProfile(void) {
     WCHAR profile[MAX_PROFILE], path[MAX_PATH * 2], enabledPath[MAX_PATH * 2];
     GetCurrentProfileName(profile, _countof(profile));
     if (IsCurrentSettingsProfile(profile)) {
-        MessageBoxW(NULL, L"Type a profile name before saving. Current Game Settings is a live view of settings.save.", L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(NULL, L"Type a profile name before saving. Current Game Settings is the live settings.save view and is not a named profile.", L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
         return;
     }
-    BOOL repaired = RepairDependencyOrderInPlace();
-    RebuildListPreservingChecks(GetSelectedListIndex());
     GetProfilePath(profile, path, _countof(path));
     if (!SaveOrderToPath(path)) {
         MessageBoxW(NULL, L"Could not save profile.", L"ModTheSpire2", MB_ICONERROR);
@@ -2672,10 +2713,8 @@ static void SaveNamedProfile(void) {
         return;
     }
     RefreshProfiles();
-    SetWindowTextW(g_profileCombo, profile);
-    SetWindowTextW(g_status, repaired
-        ? L"Named profile saved. Order was adjusted to satisfy dependencies."
-        : L"Named order and enabled profile saved.");
+    SelectProfileByName(profile);
+    SetWindowTextW(g_status, L"Profile saved with current order and enabled selections.");
 }
 
 static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList) {
@@ -2733,7 +2772,7 @@ static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList) {
     if (rebuildList && g_list) RebuildListPreservingChecks(0);
     if (g_status) SetWindowTextW(g_status, repaired
         ? L"Profile loaded. Order was adjusted to satisfy dependencies."
-        : L"Named order profile loaded. Save Order to make it default.");
+        : L"Profile order loaded.");
     return repaired;
 }
 
@@ -2755,7 +2794,7 @@ static void LoadNamedProfile(void) {
     if (LoadEnabledFromPathToList(enabledPath)) {
         SetWindowTextW(g_status, repaired
             ? L"Named profile loaded with enabled mods. Order was adjusted to satisfy dependencies."
-            : L"Named order and enabled profile loaded. Save Order to make it default.");
+            : L"Profile loaded with enabled selections.");
     }
 }
 
@@ -2846,7 +2885,7 @@ static void Launch(BOOL modded) {
         }
     }
     WCHAR orderMessage[MAX_TEXT * 2];
-    if (!ValidateDependencyOrder(orderMessage, _countof(orderMessage))) {
+    if (modded && !ValidateSelectedDependencyOrder(orderMessage, _countof(orderMessage))) {
         MessageBoxW(NULL, orderMessage, L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
         return;
     }
@@ -2937,14 +2976,12 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         CreateWindowW(L"STATIC", L"Load order", WS_CHILD | WS_VISIBLE, 20, 570, 86, 20, hwnd, NULL, g_instance, NULL);
         g_btnUp = CreateWindowW(L"BUTTON", L"Move Up", WS_CHILD | WS_VISIBLE, 20, 594, 88, 30, hwnd, (HMENU)103, g_instance, NULL);
         g_btnDown = CreateWindowW(L"BUTTON", L"Move Down", WS_CHILD | WS_VISIBLE, 116, 594, 100, 30, hwnd, (HMENU)104, g_instance, NULL);
-        g_btnSaveOrder = CreateWindowW(L"BUTTON", L"Save Order", WS_CHILD | WS_VISIBLE, 224, 594, 108, 30, hwnd, (HMENU)105, g_instance, NULL);
-        g_btnResetOrder = CreateWindowW(L"BUTTON", L"Reset Order", WS_CHILD | WS_VISIBLE, 340, 594, 108, 30, hwnd, (HMENU)106, g_instance, NULL);
-        CreateWindowW(L"STATIC", L"Row", WS_CHILD | WS_VISIBLE, 462, 599, 32, 22, hwnd, NULL, g_instance, NULL);
-        g_orderEdit = CreateWindowW(L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 498, 594, 50, 28, hwnd, (HMENU)107, g_instance, NULL);
-        g_btnApplyOrder = CreateWindowW(L"BUTTON", L"Set", WS_CHILD | WS_VISIBLE, 556, 594, 60, 30, hwnd, (HMENU)108, g_instance, NULL);
-        CreateWindowW(L"STATIC", L"Profiles", WS_CHILD | WS_VISIBLE, 640, 570, 70, 20, hwnd, NULL, g_instance, NULL);
-        g_profileCombo = CreateWindowW(WC_COMBOBOXW, L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWN | WS_VSCROLL, 640, 594, 228, 120, hwnd, (HMENU)109, g_instance, NULL);
-        g_btnSaveProfile = CreateWindowW(L"BUTTON", L"Save Profile", WS_CHILD | WS_VISIBLE, 878, 594, 100, 30, hwnd, (HMENU)110, g_instance, NULL);
+        CreateWindowW(L"STATIC", L"Row", WS_CHILD | WS_VISIBLE, 236, 599, 32, 22, hwnd, NULL, g_instance, NULL);
+        g_orderEdit = CreateWindowW(L"EDIT", L"1", WS_CHILD | WS_VISIBLE | WS_BORDER | ES_NUMBER, 272, 594, 50, 28, hwnd, (HMENU)107, g_instance, NULL);
+        g_btnApplyOrder = CreateWindowW(L"BUTTON", L"Set", WS_CHILD | WS_VISIBLE, 330, 594, 60, 30, hwnd, (HMENU)108, g_instance, NULL);
+        CreateWindowW(L"STATIC", L"Profile", WS_CHILD | WS_VISIBLE, 420, 570, 70, 20, hwnd, NULL, g_instance, NULL);
+        g_profileCombo = CreateWindowW(WC_COMBOBOXW, L"", WS_CHILD | WS_VISIBLE | CBS_DROPDOWN | WS_VSCROLL, 420, 594, 338, 120, hwnd, (HMENU)109, g_instance, NULL);
+        g_btnSaveOrder = CreateWindowW(L"BUTTON", L"Save", WS_CHILD | WS_VISIBLE, 768, 594, 92, 30, hwnd, (HMENU)105, g_instance, NULL);
         g_btnRefresh = CreateWindowW(L"BUTTON", L"Refresh", WS_CHILD | WS_VISIBLE, 20, 640, 92, 34, hwnd, (HMENU)100, g_instance, NULL);
         g_btnVanilla = CreateWindowW(L"BUTTON", L"Vanilla", WS_CHILD | WS_VISIBLE, 124, 640, 120, 34, hwnd, (HMENU)101, g_instance, NULL);
         g_btnLaunch = CreateWindowW(L"BUTTON", L"Launch Selected", WS_CHILD | WS_VISIBLE, 256, 640, 174, 34, hwnd, (HMENU)102, g_instance, NULL);
@@ -2959,11 +2996,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
             SendMessageW(g_btnUp, WM_SETFONT, (WPARAM)g_font, TRUE);
             SendMessageW(g_btnDown, WM_SETFONT, (WPARAM)g_font, TRUE);
             SendMessageW(g_btnSaveOrder, WM_SETFONT, (WPARAM)g_font, TRUE);
-            SendMessageW(g_btnResetOrder, WM_SETFONT, (WPARAM)g_font, TRUE);
             SendMessageW(g_orderEdit, WM_SETFONT, (WPARAM)g_font, TRUE);
             SendMessageW(g_btnApplyOrder, WM_SETFONT, (WPARAM)g_font, TRUE);
             SendMessageW(g_profileCombo, WM_SETFONT, (WPARAM)g_font, TRUE);
-            SendMessageW(g_btnSaveProfile, WM_SETFONT, (WPARAM)g_font, TRUE);
         }
         if (g_titleFont) SendMessageW(g_title, WM_SETFONT, (WPARAM)g_titleFont, TRUE);
         RefreshProfiles();
@@ -2982,10 +3017,8 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (LOWORD(wp) == 103 || (HWND)lp == g_btnUp) MoveSelectedMod(-1);
         if (LOWORD(wp) == 104 || (HWND)lp == g_btnDown) MoveSelectedMod(1);
         if (LOWORD(wp) == 105 || (HWND)lp == g_btnSaveOrder) SaveCurrentOrder();
-        if (LOWORD(wp) == 106 || (HWND)lp == g_btnResetOrder) ResetSavedOrder();
         if (LOWORD(wp) == 108 || (HWND)lp == g_btnApplyOrder) ApplySelectedOrderNumber();
         if (LOWORD(wp) == 109 && HIWORD(wp) == CBN_SELCHANGE && !g_refreshingProfiles) LoadNamedProfile();
-        if (LOWORD(wp) == 110 || (HWND)lp == g_btnSaveProfile) SaveNamedProfile();
         break;
     case WM_NOTIFY:
         if (((LPNMHDR)lp)->hwndFrom == g_list && ((LPNMHDR)lp)->code == LVN_ITEMCHANGED) {
