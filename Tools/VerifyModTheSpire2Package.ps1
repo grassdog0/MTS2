@@ -76,6 +76,7 @@ if (-not ($manifestAnalysisText -match "wuwancients" -and $manifestAnalysisText 
 
 $companionSource = Get-Content (Join-Path $root "ModTheSpire2Companion\ModTheSpire2Entry.HotManage.cs") -Raw
 $classifierSource = Get-Content (Join-Path $root "Tools\ClassifyModsForHotApply.ps1") -Raw
+$launcherSource = Get-Content (Join-Path $root "NativeLauncher\ModTheSpire2Launcher.c") -Raw
 if (-not ($companionSource.Contains("KnownMainMenuContentMods") -and $companionSource.Contains("not proof that toggling the loaded mod itself is safe"))) {
     Fail "Companion source no longer documents why wuwancients is not an entire-mod Hot-Apply allow-list entry"
 }
@@ -135,6 +136,18 @@ if (-not ($companionSource.Contains("Whole-mod changes require closing the game 
 }
 if (-not ($classifierSource.Contains("invalid manifest; restart required") -and $classifierSource.Contains("GetFileNameWithoutExtension") -and $classifierSource.Contains("Test-PayloadFileInModDir"))) {
     Fail "Classifier source no longer has the conservative invalid-manifest fallback"
+}
+if (-not ($launcherSource.Contains("ApplyBetterModMenuGroupsFromJson") -and $launcherSource.Contains("mod_data\\BetterModMenu\\mod_profiles.json") -and $launcherSource.Contains("ApplyBetterModMenuGroupsFromCsvExports") -and $launcherSource.Contains("ApplyFallbackGroup") -and $launcherSource.Contains("group=%ls"))) {
+    Fail "Launcher source no longer preserves optional Better Mod Menu grouping with fallback diagnostics"
+}
+if (-not ($launcherSource.Contains("swprintf(path, _countof(path), L`"%ls\\mod_data\\BetterModMenu\\mod_profiles.json`", userRoot);") -and $launcherSource.Contains("char* json = ReadFileBytes(path, &size);"))) {
+    Fail "Launcher source no longer reads Better Mod Menu profile JSON through the read-only file path"
+}
+if ($launcherSource -match "WriteFileBytes\([^)]*BetterModMenu|CreateFileW\([^)]*BetterModMenu|DeleteFileW\([^)]*BetterModMenu|MoveFileW\([^)]*BetterModMenu|CopyFileW\([^)]*BetterModMenu") {
+    Fail "Launcher source appears to write, delete, move, or copy real Better Mod Menu files; grouping import must remain read-only"
+}
+if (-not ($launcherSource.Contains("JoinPath(csvPath, _countof(csvPath), dataDir, L`"better-mod-menu-group-self-test.csv`");") -and $launcherSource.Contains("DeleteFileW(csvPath);"))) {
+    Fail "Launcher grouping self-test no longer confines temporary CSV writes to ModTheSpire2Data"
 }
 
 $expectedFiles = @(
