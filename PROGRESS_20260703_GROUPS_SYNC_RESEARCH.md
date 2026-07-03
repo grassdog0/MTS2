@@ -165,3 +165,62 @@ Current launcher candidate:
   - `ModUploader-win-x64\ModTheSpire2Workspace\content`
 
 This is a test candidate, not a manually accepted Workshop release yet.
+
+## 2026-07-03 10:38 - Read-Only Multiplayer Mismatch Helper
+
+Investigated multiplayer mismatch surfaces.
+
+Evidence:
+
+- `sts2.xml` documents `ConnectionFailureExtraInfo.missingModsOnLocal` and `missingModsOnHost`.
+- `sts2.xml` documents `NetError.ModMismatch` and `NetErrorInfo.GetErrorString`.
+- `sts2.xml` documents `JoinFlow.Begin(...)` throwing `ClientConnectionFailedException` on join failure.
+- Local logs did not contain a captured real mismatch case yet.
+- Direct PowerShell reflection against the game runtime is noisy because of runtime/type-load differences, so implementation must stay defensive.
+
+Implemented a low-risk read-only helper in `ModTheSpire2Companion/ModTheSpire2Entry.HotManage.cs`.
+
+Behavior:
+
+- Adds a Harmony postfix target for `MegaCrit.Sts2.Core.Entities.Multiplayer.NetErrorInfo.GetErrorString`.
+- If the error appears to be `ModMismatch`, appends a `ModTheSpire2 help` section to the existing game error text.
+- Does not bypass multiplayer checks.
+- Does not alter `JoinFlow`, lobby state, network messages, or mod lists.
+- Attempts to reflectively find `missingModsOnLocal` and `missingModsOnHost` anywhere inside the error-info object graph.
+- If exact missing mod names are unavailable, it still explains that the host/local gameplay mod lists differ.
+- Writes the latest report to:
+  `ModTheSpire2Data\multiplayer-mismatch-last.txt`
+
+Limitations:
+
+- Needs a real multiplayer mismatch manual test to confirm whether STS2 exposes missing mod names through `NetErrorInfo` at this hook point.
+- The helper is intentionally informational only. It does not auto-subscribe Workshop items and does not force join.
+
+Verification:
+
+```powershell
+dotnet C:\Program Files\dotnet\sdk\8.0.402\Roslyn\bincore\csc.dll ... ModTheSpire2Entry.HotManage.cs
+```
+
+Result: compiled.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `602.18 KB`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Result: `Status OK`.
+
+Current DLL candidate:
+
+- SHA256: `E8B06CEC359AFEBC7740B8DEE0866089CA12C50EC6CA6146280B6CD197AFD104`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.

@@ -242,6 +242,374 @@ internal static class ModdingScreenButton
     }
 }
 
+[HarmonyPatch]
+internal static class MultiplayerMismatchErrorPatch
+{
+    public static bool Prepare()
+    {
+        return TargetMethod() is not null;
+    }
+
+    public static MethodBase? TargetMethod()
+    {
+        return AccessTools.TypeByName("MegaCrit.Sts2.Core.Entities.Multiplayer.NetErrorInfo")
+            ?.GetMethod("GetErrorString", BindingFlags.Public | BindingFlags.Instance);
+    }
+
+    public static void Postfix(object __instance, ref string __result)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(__result) || __result.Contains("ModTheSpire2 help", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            if (!MultiplayerMismatchInfo.TryBuild(__instance, out var helpText, out var reportText))
+            {
+                return;
+            }
+
+            __result = __result.TrimEnd() + "\n\n" + helpText;
+            MultiplayerMismatchInfo.SaveLastReport(reportText);
+            CompanionLog.Write("Multiplayer ModMismatch help appended");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Multiplayer mismatch helper failed: " + ex.Message);
+        }
+    }
+}
+
+internal static class MultiplayerMismatchInfo
+{
+    private const int MaxItems = 24;
+
+    public static bool TryBuild(object info, out string helpText, out string reportText)
+    {
+        helpText = "";
+        reportText = "";
+        if (!LooksLikeModMismatch(info))
+        {
+            return false;
+        }
+
+        var localMissing = new System.Collections.Generic.List<string>();
+        var hostMissing = new System.Collections.Generic.List<string>();
+        CollectMissingMods(info, localMissing, hostMissing, new System.Collections.Generic.HashSet<object>(ReferenceEqualityComparer.Instance), 0);
+
+        var lines = new System.Collections.Generic.List<string>
+        {
+            "ModTheSpire2 help:",
+            "This multiplayer join failed because the host and local gameplay mod lists do not match."
+        };
+        if (localMissing.Count > 0)
+        {
+            lines.Add("Mods the host has but you are missing:");
+            lines.AddRange(localMissing.Take(MaxItems).Select(name => "- " + name));
+            if (localMissing.Count > MaxItems)
+            {
+                lines.Add($"- ...and {localMissing.Count - MaxItems} more");
+            }
+        }
+        if (hostMissing.Count > 0)
+        {
+            lines.Add("Mods you have but the host is missing:");
+            lines.AddRange(hostMissing.Take(MaxItems).Select(name => "- " + name));
+            if (hostMissing.Count > MaxItems)
+            {
+                lines.Add($"- ...and {hostMissing.Count - MaxItems} more");
+            }
+        }
+        if (localMissing.Count == 0 && hostMissing.Count == 0)
+        {
+            lines.Add("The game did not expose the exact missing mod names to ModTheSpire2.");
+        }
+        lines.Add("Use the ModTheSpire2 launcher to switch profiles or restart with a matching mod set. If a missing mod has no Workshop link here, search its name in the Workshop.");
+
+        helpText = string.Join("\n", lines);
+        reportText = "ModTheSpire2 multiplayer mismatch report\n"
+            + "Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n\n"
+            + helpText + "\n\nRaw NetErrorInfo:\n" + SafeToString(info);
+        return true;
+    }
+
+    public static void SaveLastReport(string report)
+    {
+        try
+        {
+            var dir = Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "multiplayer-mismatch-last.txt"), report);
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Save multiplayer mismatch report failed: " + ex.Message);
+        }
+    }
+
+    private static bool LooksLikeModMismatch(object? info)
+    {
+        if (info is null)
+        {
+            return false;
+        }
+        try
+        {
+            var reason = info.GetType().GetMethod("GetReason", BindingFlags.Public | BindingFlags.Instance)
+                ?.Invoke(info, null);
+            if (StringLikeModMismatch(reason))
+            {
+                return true;
+            }
+        }
+        catch
+        {
+        }
+
+        return ObjectGraphContainsModMismatch(info, new System.Collections.Generic.HashSet<object>(ReferenceEqualityComparer.Instance), 0);
+    }
+
+    private static bool ObjectGraphContainsModMismatch(object? value, System.Collections.Generic.HashSet<object> seen, int depth)
+    {
+        if (value is null || depth > 3)
+        {
+            return false;
+        }
+        if (StringLikeModMismatch(value))
+        {
+            return true;
+        }
+        var type = value.GetType();
+        if (IsSimple(type) || !seen.Add(value))
+        {
+            return false;
+        }
+        foreach (var memberValue in EnumerateMemberValues(value, type))
+        {
+            if (ObjectGraphContainsModMismatch(memberValue, seen, depth + 1))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool StringLikeModMismatch(object? value)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+        var text = value.ToString();
+        return text?.IndexOf("ModMismatch", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static void CollectMissingMods(
+        object? value,
+        System.Collections.Generic.List<string> localMissing,
+        System.Collections.Generic.List<string> hostMissing,
+        System.Collections.Generic.HashSet<object> seen,
+        int depth)
+    {
+        if (value is null || depth > 5)
+        {
+            return;
+        }
+        var type = value.GetType();
+        if (IsSimple(type) || !seen.Add(value))
+        {
+            return;
+        }
+
+        foreach (var field in SafeFields(type))
+        {
+            object? fieldValue;
+            try
+            {
+                fieldValue = field.GetValue(value);
+            }
+            catch
+            {
+                continue;
+            }
+            AddIfMissingList(field.Name, fieldValue, localMissing, hostMissing);
+            CollectMissingMods(fieldValue, localMissing, hostMissing, seen, depth + 1);
+        }
+
+        foreach (var prop in SafeProperties(type))
+        {
+            if (prop.GetIndexParameters().Length != 0)
+            {
+                continue;
+            }
+            object? propValue;
+            try
+            {
+                propValue = prop.GetValue(value);
+            }
+            catch
+            {
+                continue;
+            }
+            AddIfMissingList(prop.Name, propValue, localMissing, hostMissing);
+            CollectMissingMods(propValue, localMissing, hostMissing, seen, depth + 1);
+        }
+    }
+
+    private static void AddIfMissingList(string memberName, object? value, System.Collections.Generic.List<string> localMissing, System.Collections.Generic.List<string> hostMissing)
+    {
+        var target = memberName.IndexOf("missingModsOnLocal", StringComparison.OrdinalIgnoreCase) >= 0
+            ? localMissing
+            : memberName.IndexOf("missingModsOnHost", StringComparison.OrdinalIgnoreCase) >= 0
+                ? hostMissing
+                : null;
+        if (target is null)
+        {
+            return;
+        }
+        foreach (var item in FlattenStrings(value))
+        {
+            if (!target.Contains(item, StringComparer.OrdinalIgnoreCase))
+            {
+                target.Add(item);
+            }
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<string> FlattenStrings(object? value)
+    {
+        if (value is null)
+        {
+            yield break;
+        }
+        if (value is string text)
+        {
+            foreach (var item in SplitPossibleList(text))
+            {
+                yield return item;
+            }
+            yield break;
+        }
+        if (value is System.Collections.IEnumerable enumerable)
+        {
+            foreach (var item in enumerable)
+            {
+                foreach (var textItem in FlattenStrings(item))
+                {
+                    yield return textItem;
+                }
+            }
+            yield break;
+        }
+
+        var rendered = SafeToString(value);
+        foreach (var item in SplitPossibleList(rendered))
+        {
+            yield return item;
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<string> SplitPossibleList(string text)
+    {
+        foreach (var item in text.Split(['\n', '\r', ',', ';', '|'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = item.Trim().Trim('[', ']', '"');
+            if (trimmed.Length > 0 && !trimmed.Equals("null", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return trimmed;
+            }
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<object?> EnumerateMemberValues(object value, Type type)
+    {
+        foreach (var field in SafeFields(type))
+        {
+            object? fieldValue = null;
+            try
+            {
+                fieldValue = field.GetValue(value);
+            }
+            catch
+            {
+            }
+            if (fieldValue is not null)
+            {
+                yield return fieldValue;
+            }
+        }
+        foreach (var prop in SafeProperties(type))
+        {
+            if (prop.GetIndexParameters().Length != 0)
+            {
+                continue;
+            }
+            object? propValue = null;
+            try
+            {
+                propValue = prop.GetValue(value);
+            }
+            catch
+            {
+            }
+            if (propValue is not null)
+            {
+                yield return propValue;
+            }
+        }
+    }
+
+    private static FieldInfo[] SafeFields(Type type)
+    {
+        try
+        {
+            return type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static PropertyInfo[] SafeProperties(Type type)
+    {
+        try
+        {
+            return type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static bool IsSimple(Type type)
+    {
+        return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) || type == typeof(DateTime);
+    }
+
+    private static string SafeToString(object? value)
+    {
+        try
+        {
+            return value?.ToString() ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private sealed class ReferenceEqualityComparer : System.Collections.Generic.IEqualityComparer<object>
+    {
+        public static readonly ReferenceEqualityComparer Instance = new();
+
+        public new bool Equals(object? x, object? y) => ReferenceEquals(x, y);
+
+        public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+    }
+}
+
 internal static class UiLayoutStore
 {
     private static readonly object Gate = new();
