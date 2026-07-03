@@ -166,6 +166,53 @@ Current launcher candidate:
 
 This is a test candidate, not a manually accepted Workshop release yet.
 
+## 2026-07-03 11:32 - Actionable Mismatch Help Text
+
+Improved the player-facing multiplayer mismatch help text.
+
+Behavior:
+
+- The ModMismatch appended help now tells players that the full report is saved at:
+  `ModTheSpire2Data\multiplayer-mismatch-last.txt`
+- It tells players to open ModTheSpire2 Management and use:
+  - `Open Missing Mod Links`
+  - `Copy Mismatch Report`
+- The saved report also includes a short instruction block before the full details.
+
+Safety:
+
+- Text-only change.
+- Does not alter network checks, subscriptions, mod state, or launcher flow.
+
+Verification:
+
+```powershell
+dotnet C:\Program Files\dotnet\sdk\8.0.402\Roslyn\bincore\csc.dll ... ModTheSpire2Entry.HotManage.cs
+```
+
+Result: compiled.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Result: `Status OK`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `613.68 KB`.
+
+Current DLL candidate:
+
+- SHA256: `77F7F69ACD453CFA18C02FA2687CFA5D91CDEB56D54B11D46473B65422FDD0B6`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.
+
 ## 2026-07-03 11:26 - Mismatch Actions In ModTheSpire2 Management
 
 Made the multiplayer mismatch helper available from ModTheSpire2's own management dialog, not only from BaseLib ModConfig.

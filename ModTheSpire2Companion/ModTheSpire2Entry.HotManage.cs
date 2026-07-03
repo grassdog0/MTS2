@@ -326,10 +326,14 @@ internal static class MultiplayerMismatchInfo
             lines.Add("The game did not expose the exact missing mod names to ModTheSpire2.");
         }
         lines.Add("Use the ModTheSpire2 launcher to switch profiles or restart with a matching mod set. If a missing mod has no Workshop link here, search its name in the Workshop.");
+        lines.Add("A full report is saved to ModTheSpire2Data\\multiplayer-mismatch-last.txt.");
+        lines.Add("Open ModTheSpire2 Management to use Open Missing Mod Links or Copy Mismatch Report.");
 
         helpText = string.Join("\n", lines);
         reportText = "ModTheSpire2 multiplayer mismatch report\n"
             + "Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n\n"
+            + "Use Open Missing Mod Links in ModTheSpire2 Management to open Workshop pages from this report.\n"
+            + "Use Copy Mismatch Report to copy this file for feedback.\n\n"
             + helpText
             + "\n\nKnown local/subscribed mod index:\n"
             + resolver.BuildIndexReport()
