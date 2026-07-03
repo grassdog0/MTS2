@@ -166,6 +166,56 @@ Current launcher candidate:
 
 This is a test candidate, not a manually accepted Workshop release yet.
 
+## 2026-07-03 11:10 - Open Missing Workshop Links Action
+
+Added a safe player action for the multiplayer mismatch helper.
+
+Behavior:
+
+- Added `MultiplayerMismatchActions` in `ModTheSpire2Companion/ModTheSpire2Entry.HotManage.cs`.
+- It reads the latest `ModTheSpire2Data\multiplayer-mismatch-last.txt` report.
+- It extracts unique Steam Workshop links from that report.
+- It opens at most 12 links to avoid flooding Steam/browser windows.
+- If no report or links exist, it shows an explanatory message telling the player to trigger a mismatch once first.
+- Added an `Open Missing Mod Links` button to the BaseLib ModConfig UI.
+- Added a dynamic config button method `OpenMismatchWorkshopLinksFromConfig`.
+
+Safety:
+
+- This does not auto-subscribe.
+- This does not bypass multiplayer mismatch checks.
+- This does not alter lobby/network/game state.
+- It only opens links that ModTheSpire2 already recorded in the last mismatch report.
+
+Verification:
+
+```powershell
+dotnet C:\Program Files\dotnet\sdk\8.0.402\Roslyn\bincore\csc.dll ... ModTheSpire2Entry.HotManage.cs
+```
+
+Result: compiled.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Result: `Status OK`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `611.68 KB`.
+
+Current DLL candidate:
+
+- SHA256: `E5296A0DD7FF771F00C28FFE6039C2E89A0CAF1813DACCF83A38E3D443D87ABE`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.
+
 ## 2026-07-03 11:00 - Mismatch Resolver Regression Guard
 
 Added regression coverage for the Workshop-link resolver path.

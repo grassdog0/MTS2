@@ -835,6 +835,87 @@ internal sealed class MismatchModResolver
     private static string WorkshopUrl(string workshopId) => "https://steamcommunity.com/sharedfiles/filedetails/?id=" + workshopId;
 }
 
+internal static class MultiplayerMismatchActions
+{
+    private const int MaxOpenLinks = 12;
+
+    public static void OpenLastWorkshopLinks()
+    {
+        try
+        {
+            var links = ReadLastWorkshopLinks().Take(MaxOpenLinks + 1).ToArray();
+            if (links.Length == 0)
+            {
+                NativeMessageBox.Show(
+                    "No multiplayer mismatch Workshop links were found yet.\n\nTry joining the host once, then open this again after ModTheSpire2 records the mismatch report.",
+                    "ModTheSpire2");
+                return;
+            }
+            var toOpen = links.Take(MaxOpenLinks).ToArray();
+            foreach (var link in toOpen)
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = link,
+                    UseShellExecute = true
+                });
+            }
+            var extra = links.Length > MaxOpenLinks
+                ? $"\n\nOnly the first {MaxOpenLinks} links were opened to avoid flooding Steam/browser windows."
+                : "";
+            NativeMessageBox.Show(
+                $"Opened {toOpen.Length} Workshop link(s) from the latest multiplayer mismatch report." + extra,
+                "ModTheSpire2");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Open mismatch Workshop links failed: " + ex);
+            NativeMessageBox.Show("Could not open mismatch Workshop links:\n" + ex.Message, "ModTheSpire2");
+        }
+    }
+
+    public static string GetReportPath() => Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data", "multiplayer-mismatch-last.txt");
+
+    public static string[] ReadLastWorkshopLinks()
+    {
+        var path = GetReportPath();
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+        var text = File.ReadAllText(path);
+        return ExtractWorkshopLinks(text).ToArray();
+    }
+
+    internal static System.Collections.Generic.IEnumerable<string> ExtractWorkshopLinks(string text)
+    {
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(
+                     text,
+                     @"https?://steamcommunity\.com/sharedfiles/filedetails/\?id=(\d+)",
+                     System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            var id = match.Groups[1].Value;
+            if (id.Length == 0 || !seen.Add(id))
+            {
+                continue;
+            }
+            yield return "https://steamcommunity.com/sharedfiles/filedetails/?id=" + id;
+        }
+    }
+
+    public static bool SelfTest()
+    {
+        var links = ExtractWorkshopLinks(
+            "one https://steamcommunity.com/sharedfiles/filedetails/?id=1111111111 " +
+            "dup https://steamcommunity.com/sharedfiles/filedetails/?id=1111111111 " +
+            "two https://steamcommunity.com/sharedfiles/filedetails/?id=2222222222").ToArray();
+        return links.Length == 2
+            && links[0].EndsWith("1111111111", StringComparison.Ordinal)
+            && links[1].EndsWith("2222222222", StringComparison.Ordinal);
+    }
+}
+
 internal static class UiLayoutStore
 {
     private static readonly object Gate = new();
@@ -4599,6 +4680,7 @@ internal static class DynamicModConfigType
 
         DefineButtonMethod(type, buttonAttributeType, "OpenManagementButton", "Open ModTheSpire2 Management", nameof(OpenManagementFromConfig));
         DefineButtonMethod(type, buttonAttributeType, "CopyLaunchOptionButton", "Copy Steam Launch Option", nameof(CopyLaunchOptionFromConfig));
+        DefineButtonMethod(type, buttonAttributeType, "OpenMismatchWorkshopLinksButton", "Open Missing Mod Links", nameof(OpenMismatchWorkshopLinksFromConfig));
 
         var method = type.DefineMethod(
             "SetupConfigUI",
@@ -4655,6 +4737,11 @@ internal static class DynamicModConfigType
             var open = CreateConfigButton("Open Management");
             open.Pressed += () => ModManagementDialog.Show(optionContainer);
             row.AddChild(open);
+
+            var links = CreateConfigButton("Open Missing Mod Links");
+            links.TooltipText = "Open Workshop links from the latest multiplayer mod mismatch report.";
+            links.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks;
+            row.AddChild(links);
         }
         catch (Exception ex)
         {
@@ -4680,6 +4767,11 @@ internal static class DynamicModConfigType
     public static void CopyLaunchOptionFromConfig()
     {
         DisplayServer.ClipboardSet(LauncherActions.GetLaunchOption());
+    }
+
+    public static void OpenMismatchWorkshopLinksFromConfig()
+    {
+        MultiplayerMismatchActions.OpenLastWorkshopLinks();
     }
 }
 

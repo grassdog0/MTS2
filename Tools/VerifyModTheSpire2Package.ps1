@@ -106,6 +106,9 @@ if (-not ($companionSource.Contains("MultiplayerMismatchErrorPatch") -and $compa
 if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource.Contains("public static bool SelfTest()") -and $companionSource.Contains("https://steamcommunity.com/sharedfiles/filedetails/?id=") -and $companionSource.Contains("Known local/subscribed mod index"))) {
     Fail "Companion source no longer maps multiplayer mismatch entries to Workshop links"
 }
+if (-not ($companionSource.Contains("MultiplayerMismatchActions") -and $companionSource.Contains("Open Missing Mod Links") -and $companionSource.Contains("MaxOpenLinks") -and $companionSource.Contains("ExtractWorkshopLinks") -and $companionSource.Contains("OpenMismatchWorkshopLinksFromConfig"))) {
+    Fail "Companion source no longer exposes a safe way to open mismatch Workshop links"
+}
 if (-not ($companionSource.Contains("UiLayoutStore") -and $companionSource.Contains("ui-layout.json") -and $companionSource.Contains("AttachLongPressDrag") -and $companionSource.Contains("AttachDragSurface"))) {
     Fail "Companion source no longer supports persistent draggable ModTheSpire2 UI controls"
 }
