@@ -104,10 +104,10 @@ if (-not ($companionSource.Contains("BuildRestartLauncherArguments") -and $compa
 if (-not ($companionSource.Contains("MultiplayerMismatchErrorPatch") -and $companionSource.Contains("NetErrorInfo") -and $companionSource.Contains("GetErrorString") -and $companionSource.Contains("missingModsOnLocal") -and $companionSource.Contains("missingModsOnHost") -and $companionSource.Contains("multiplayer-mismatch-last.txt"))) {
     Fail "Companion source no longer exposes the read-only multiplayer mismatch helper"
 }
-if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource.Contains("public static bool SelfTest()") -and $companionSource.Contains("https://steamcommunity.com/sharedfiles/filedetails/?id=") -and $companionSource.Contains("Known local/subscribed mod index"))) {
+if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource.Contains("public static bool SelfTest()") -and $companionSource.Contains("https://steamcommunity.com/sharedfiles/filedetails/?id=") -and $companionSource.Contains("steam://url/CommunityFilePage/") -and $companionSource.Contains("Known local/subscribed mod index"))) {
     Fail "Companion source no longer maps multiplayer mismatch entries to Workshop links"
 }
-if (-not ($companionSource.Contains("MultiplayerMismatchActions") -and $companionSource.Contains("Open Missing Mod Links") -and $companionSource.Contains("MaxOpenLinks") -and $companionSource.Contains("ExtractWorkshopLinks") -and $companionSource.Contains("OpenMismatchWorkshopLinksFromConfig"))) {
+if (-not ($companionSource.Contains("MultiplayerMismatchActions") -and $companionSource.Contains("Open Missing Mod Links") -and $companionSource.Contains("MaxOpenLinks") -and $companionSource.Contains("ExtractWorkshopLinks") -and $companionSource.Contains("CommunityFilePage") -and $companionSource.Contains("OpenMismatchWorkshopLinksFromConfig"))) {
     Fail "Companion source no longer exposes a safe way to open mismatch Workshop links"
 }
 if (-not ($companionSource.Contains("RunStartupSelfTests") -and $companionSource.Contains("MultiplayerMismatchActions.SelfTest()") -and $companionSource.Contains("MismatchModResolver.SelfTest()") -and $companionSource.Contains("Startup self-tests: mismatchLinks="))) {

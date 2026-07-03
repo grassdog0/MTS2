@@ -706,10 +706,12 @@ internal sealed class MismatchModResolver
         var byId = resolver.Describe("Act4Heart");
         var byName = resolver.Describe("Act 4 Heart");
         var byUrl = resolver.Describe("https://steamcommunity.com/sharedfiles/filedetails/?id=3747537811");
+        var bySteamUrl = resolver.Describe("steam://url/CommunityFilePage/3747537811");
         var unknownUrl = resolver.Describe("https://steamcommunity.com/sharedfiles/filedetails/?id=1234567890");
         return byId.Contains("3747537811", StringComparison.Ordinal)
             && byName.Contains("Act4Heart", StringComparison.Ordinal)
             && byUrl.Contains("Act 4 Heart", StringComparison.Ordinal)
+            && bySteamUrl.Contains("Act 4 Heart", StringComparison.Ordinal)
             && unknownUrl.Contains("1234567890", StringComparison.Ordinal);
     }
 
@@ -961,7 +963,7 @@ internal static class MultiplayerMismatchActions
         var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(
                      text,
-                     @"https?://steamcommunity\.com/sharedfiles/filedetails/\?id=(\d+)",
+                     @"(?:https?://steamcommunity\.com/sharedfiles/filedetails/[^\s\]]*?[?&]id=|steam://url/CommunityFilePage/)(\d+)",
                      System.Text.RegularExpressions.RegexOptions.IgnoreCase))
         {
             var id = match.Groups[1].Value;
@@ -978,10 +980,12 @@ internal static class MultiplayerMismatchActions
         var links = ExtractWorkshopLinks(
             "one https://steamcommunity.com/sharedfiles/filedetails/?id=1111111111 " +
             "dup https://steamcommunity.com/sharedfiles/filedetails/?id=1111111111 " +
-            "two https://steamcommunity.com/sharedfiles/filedetails/?id=2222222222").ToArray();
-        return links.Length == 2
+            "two https://steamcommunity.com/sharedfiles/filedetails/?foo=bar&id=2222222222 " +
+            "three steam://url/CommunityFilePage/3333333333").ToArray();
+        return links.Length == 3
             && links[0].EndsWith("1111111111", StringComparison.Ordinal)
-            && links[1].EndsWith("2222222222", StringComparison.Ordinal);
+            && links[1].EndsWith("2222222222", StringComparison.Ordinal)
+            && links[2].EndsWith("3333333333", StringComparison.Ordinal);
     }
 
     public readonly record struct MismatchReportStatus(bool Exists, int WorkshopLinkCount, DateTime LastModified, string Path);
