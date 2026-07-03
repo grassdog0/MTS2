@@ -86,18 +86,33 @@ Observed useful data sources:
   - affects_gameplay
   - assembly info
 - Better Mod Menu exports can include Workshop links.
+- `sts2.xml` documents `ModManager.GetGameplayRelevantModNameList`, described as the list of loaded gameplay-affecting mod names used for multiplayer comparison.
+- `sts2.xml` documents `ConnectionFailureReason.ModMismatch`.
+- `sts2.xml` documents `ConnectionFailureExtraInfo.missingModsOnLocal` and `missingModsOnHost`.
+  - `missingModsOnLocal`: mods the host has and the local player is missing.
+  - `missingModsOnHost`: mods the local player has and the host is missing.
+- `sts2-heybox-support.dll` contains strings showing it patches:
+  - `ModManager.GetGameplayRelevantModNameList`
+  - `JoinFlow.Begin`
+  - server-side mod detection
+  This proves bypass is technically possible, but it also confirms bypass is invasive and should not be the default MTS2 direction.
 
 Not yet proven:
 
-- A stable host lobby mod list source.
-- A stable mismatch detail file or log entry that includes host mod ids and Workshop ids.
+- A public stable way for MTS2 to receive `ConnectionFailureExtraInfo` without patching or hooking multiplayer UI/game flow.
+- Whether the missing mod lists contain mod ids, display names, or both.
+- Whether the missing mod lists contain Workshop ids or only names.
 - A safe way to bypass the game's multiplayer mismatch checks.
 - A safe automatic subscribe path through Steamworks from this launcher.
 
 Recommended next step:
 
-1. Inspect game assemblies for multiplayer/lobby/mod mismatch metadata names.
-2. Look for lobby metadata keys or UI text that contains host mod list/diff information.
-3. If a host list can be read safely, implement a read-only mismatch report first:
+1. Build an in-game read-only hook around the disconnect/error UI or `LocalPlayerDisconnected(NetErrorInfo)` path.
+2. Capture only `ModMismatch` cases and display `missingModsOnLocal` / `missingModsOnHost`.
+3. Map missing names to local/Workshop metadata when possible:
+   - Better Mod Menu exports may provide Workshop links for known names/ids.
+   - Local manifests provide names, ids, versions, and Workshop folder ids for subscribed mods.
+   - If no Workshop id is known, show the name and let the player search manually.
+4. If a host list can be read safely, implement a read-only mismatch report first:
    local missing mods, version differences, Workshop links when known, and a restart prompt.
-4. Do not implement force-join bypass until exact check points and failure modes are known.
+5. Do not implement force-join bypass until exact check points and failure modes are known.
