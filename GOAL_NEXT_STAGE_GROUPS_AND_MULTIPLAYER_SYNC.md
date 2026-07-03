@@ -1,41 +1,137 @@
-# Goal Prompt - Better Grouping And Multiplayer Mod Sync
+# Goal Prompt - Stable Launcher, Grouping Research, And Multiplayer Sync
 
 ## Objective
 
-Continue ModTheSpire2 from the latest stable clean launcher direction. Keep the mod manager simple: startup selection, saved profiles, dependency-aware order, and quick close/restart. Do not return to broad hot-apply work.
+Continue ModTheSpire2 from the latest stable clean launcher release. Keep the product simple and reliable: startup mod selection, saved profiles, dependency-aware order, and quick close/restart. Do not return to broad whole-mod hot-apply work.
 
-This stage has two research-backed feature tracks:
+The current task is not to invent a new UI direction. First stabilize the launcher and in-game entry based on player feedback, then carefully research optional grouping and multiplayer mod-list synchronization.
 
-1. Improve launcher grouping by optionally reading Better Mod Menu data.
-2. Investigate and prototype safe multiplayer mod-list synchronization support.
+## Current Published Baseline
 
-## Current Baseline
+Use the currently uploaded build as the stable rollback point.
 
-Start from the build documented in:
+- GitHub repository: `https://github.com/grassdog0/MTS2`
+- GitHub branch: `cross-platform-launcher`
+- GitHub commit: `c521e79 Restore restart entry and simplify profile save`
+- Workshop item: `3747911678`
+- Local clean package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\WorkshopUpload\ModTheSpire2Content-Clean`
+- Uploader content: `C:\Users\HZDH\Desktop\tmp\Forimpro\ModUploader-win-x64\ModTheSpire2Workspace\content`
+- Timestamped backup package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\TestPackages\ModTheSpire2-0.4.0-current-upload-20260703-082952.zip`
 
-`C:\Users\HZDH\Desktop\tmp\Forimpro\TEST_RESTORE_BUTTON_SAVE_PROFILE_20260702.md`
+Known package hashes for this baseline:
 
-Important baseline behavior to preserve:
+- `ModTheSpire2.dll`: `6774F091566CCE0472B7F10966F78BE4DA8566D8FF37AB4595B53B7009D72683`
+- `ModTheSpire2Launcher.exe`: `D1D3E322635F11C9E456550EAE4CEBEA38C7D45C1325EEC8F121AB36CDFCA109`
 
-- Launcher live view is labeled `Current settings.save` and reads current `settings.save` order and enabled state.
-- Vanilla launch disables the global game mod switch for that launch but preserves per-mod order and enabled states for later modded launches.
-- Named profiles save both order and enabled selections.
+If local source contains unverified experimental work, compare against this baseline before continuing. Do not package or upload experimental grouping, multiplayer, hot-apply, or draggable UI changes unless they have been explicitly implemented, tested, and accepted.
+
+## Baseline Behavior To Preserve
+
+- Windows launcher remains the primary supported launcher.
+- Linux/macOS scripts remain preview-level cross-platform launchers.
+- Clean Workshop package remains the 7-file package:
+  - `ModTheSpire2.dll`
+  - `ModTheSpire2.json`
+  - `ModTheSpire2.pck`
+  - `ModTheSpire2Launcher.exe`
+  - `ModTheSpire2Launcher.sh`
+  - `ModTheSpire2Launcher.command`
+  - `README.md`
+- Launcher live view is `Current settings.save`.
+- `Current settings.save` reads the actual current game settings order and enabled state.
+- Named profiles save both enabled selections and load order.
 - Profile dropdown applies selections immediately.
-- Launcher has one `Save` button. Select an existing profile or type a new profile name, then `Save` to update/create that profile.
-- Dependency order validation at launch checks selected mods only.
-- In-game Settings / Mod Settings button uses the simple stable Close and Open Launcher confirmation flow. Do not reintroduce draggable controls or the large management overlay as the primary entry from this page.
-- Better Mod Menu compatibility is important. The ModTheSpire2 button must remain clickable when Better Mod Menu is enabled.
-- Cross-platform scripts remain present but are still preview-level unless separately tested.
+- The launcher has one clear `Save` button. Select an existing profile or type a new profile name, then `Save` to update/create that profile.
+- Vanilla Launch disables mods for that launch only and must not erase or reorder the user's normal saved mod selection.
+- Dependency validation at launch checks selected/enabled mods only.
+- In-game Settings / Mod Settings button remains a simple Close and Open Launcher confirmation flow.
+- Close and Open Launcher forwards the current game command line so renderer flags such as `--rendering-driver opengl3` are preserved.
+- Do not start a second STS2 instance while the current game is still running.
+
+## Immediate Player Feedback To Address
+
+### 1. Better Mod Menu Overlay Compatibility
+
+Current problem report:
+
+- In Settings / Mod Settings, the ModTheSpire2 button can be covered by Better Mod Menu and become unclickable.
+- A previous Workshop version reportedly had a working approach.
+
+Required direction:
+
+- Find the last known working in-game button implementation if needed.
+- Keep the button visible and clickable when Better Mod Menu is enabled.
+- Do not reintroduce the previous draggable entrance control work. That path caused interaction and cleanup regressions.
+- Do not replace the simple Close and Open Launcher flow with the large management overlay.
+
+### 2. Profile Save And Default Behavior
+
+Current problem report:
+
+- Creating a new profile is confusing or may fail.
+- `Save Order`, `Reset Order`, and separate order controls are confusing.
+- Renaming/selecting a profile should not require a separate Load button.
+- The `Default` / `settings.save` relationship became unclear.
+
+Required direction:
+
+- Keep one primary `Save` button.
+- `Save` should create a new profile when the typed name does not exist.
+- `Save` should update an existing profile when the typed/selected name already exists.
+- Profiles must save both enabled mods and load order.
+- Selecting an existing profile should apply it immediately in the launcher UI.
+- `Current settings.save` is a live view and should not be overwritten as a normal named profile.
+- `Default` is a normal saved preset if present; do not let it replace or hide `Current settings.save`.
+- Do not delete or silently recreate `Default` without clear intent.
+
+### 3. Vanilla Launch Preservation
+
+Current problem report:
+
+- Vanilla Launch correctly disables mods for one launch, but can rearrange the mod order or make it hard to restore the previous order.
+
+Required direction:
+
+- Vanilla Launch should not mutate the user's normal per-mod enabled list or load order.
+- If a temporary vanilla `settings.save` write is needed, preserve enough state to restore the normal modded state on the next launcher view.
+- Back up `settings.save` before writing.
+
+### 4. Selected-Only Dependency Checks
+
+Current problem report:
+
+- Dependency order checks can run on disabled mods and become noisy.
+
+Required direction:
+
+- Dependency missing/order checks should only block or warn for enabled/selected mods.
+- Disabled mods may still show dependency metadata, but they should not block launch.
+
+### 5. Exact Mod Id Reading
+
+Current problem report:
+
+- With Tenshi Hinanawi Skin enabled, the launcher may incorrectly enable the Hina mod even when `settings.save` says Hina is false.
+
+Required direction:
+
+- Preserve and expand exact-id parsing from `settings.save`.
+- Do not match enabled state by fuzzy substring when exact ids are available.
+- Add a focused fixture or self-test for overlapping ids/names such as `Tenshi Hinanawi Skin` and `Hina`.
 
 ## Better Mod Menu Findings
 
 Better Mod Menu is subscribed locally at:
 
-`E:\SteamLibrary\steamapps\workshop\content\2868840\3748029698`
+```text
+E:\SteamLibrary\steamapps\workshop\content\2868840\3748029698
+```
 
 It stores readable data under player mod data, for example:
 
-`%APPDATA%\SlayTheSpire2\steam\<steamid>\mod_data\BetterModMenu\mod_profiles.json`
+```text
+%APPDATA%\SlayTheSpire2\steam\<steamid>\mod_data\BetterModMenu\mod_profiles.json
+```
 
 Observed fields:
 
@@ -56,11 +152,11 @@ It can also export CSV with columns:
 - `Group`
 - `Workshop Link`
 
-This means Better Mod Menu integration is feasible as a read-only optional import, but it needs real grouped data samples because the current local `ModGroups` object is empty.
+This makes Better Mod Menu grouping feasible as an optional read-only import, but the local `ModGroups` object may be empty. Do not make Better Mod Menu a hard dependency.
 
 ## Grouping Feature Direction
 
-Implement grouping in the launcher without making Better Mod Menu a hard dependency.
+Implement grouping only after the immediate stability fixes above are passing.
 
 Preferred order:
 
@@ -72,9 +168,10 @@ Preferred order:
    - Cosmetic
    - Utility / tools
    - Unknown
-3. Keep dependency indentation visible inside groups where possible.
-4. Never write Better Mod Menu's files in the first implementation. Read-only import only.
-5. If imported grouping fails, show a status message and fall back to MTS2 grouping.
+3. Preserve the actual `settings.save` load order unless the user explicitly changes order in the launcher.
+4. Keep dependency indentation visible where possible.
+5. Never write Better Mod Menu files in the first implementation.
+6. If imported grouping fails, show a status message and fall back to MTS2 grouping.
 
 ## Multiplayer Sync Feature Direction
 
@@ -92,7 +189,7 @@ Engineering guidance:
   - display host vs local mod differences;
   - show missing Workshop item links;
   - offer to open missing Workshop pages or Steam URLs;
-  - after the user subscribes, offer close and restart through launcher.
+  - after the user subscribes, offer Close and Open Launcher.
 - Do not silently subscribe through Steamworks unless a reliable, low-risk API path is proven.
 - Do not alter multiplayer network checks until the exact check location and consequences are understood.
 
@@ -120,35 +217,39 @@ Engineering guidance:
   `E:\SteamLibrary\steamapps\common\Slay the Spire 2\mods\ModTheSpire2`
 - Other game, Steam, Workshop, and mod folders are read-only unless explicitly permitted.
 - Use English for development-facing text until behavior stabilizes.
-- Preserve the clean 7-file Workshop package layout:
-  - `ModTheSpire2.dll`
-  - `ModTheSpire2.json`
-  - `ModTheSpire2.pck`
-  - `ModTheSpire2Launcher.exe`
-  - `ModTheSpire2Launcher.sh`
-  - `ModTheSpire2Launcher.command`
-  - `README.md`
+- Use `apply_patch` for manual file edits.
+- Preserve current Windows launcher behavior unless the change directly fixes a verified bug.
+- Keep Linux/macOS changes script-based and preview-level unless real platform testing becomes available.
 
 ## Verification
 
 For every usable build:
 
 1. Rebuild the launcher or companion DLL as needed.
-2. Run existing package verifier.
-3. Keep a timestamped test package in `dist\TestPackages`.
-4. Record changes in a short markdown note.
-5. Manually test:
-   - profile creation and switching;
-   - vanilla launch preserving order;
-   - selected-only dependency validation;
+2. Run:
+   `powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive`
+3. When the game is closed and the live folder is available, run the verifier without `-SkipLive`.
+4. Keep a timestamped test package in `dist\TestPackages`.
+5. Record changes in a short markdown note.
+6. Manually test:
+   - profile creation with a new name;
+   - profile update with an existing name;
+   - immediate profile switching;
+   - `Current settings.save` reload;
+   - `Default` preset still present when expected;
+   - Vanilla Launch preserves normal enabled selections and order;
+   - dependency validation only blocks selected mods;
+   - overlapping mod ids/names do not cause false enabled state;
    - Better Mod Menu enabled and disabled;
    - Settings / Mod Settings button remains clickable with Better Mod Menu enabled;
+   - Close and Open Launcher preserves renderer flags;
    - launcher still starts only one STS2 instance.
 
 ## Non-Goals
 
 - Do not reintroduce draggable in-game entrance controls.
-- Do not implement broad hot-apply.
+- Do not implement broad whole-mod hot-apply.
 - Do not replace the stable Settings / Mod Settings button with the old large management overlay unless explicitly requested.
 - Do not make Better Mod Menu required.
 - Do not force multiplayer mismatch bypass before proving exact safety and failure modes.
+- Do not upload Workshop or push a new release until manual testing confirms the package.
