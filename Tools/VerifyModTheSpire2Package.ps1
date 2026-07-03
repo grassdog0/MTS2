@@ -121,14 +121,14 @@ if (-not ($companionSource.Contains("CreateMismatchReportPanel") -and $companion
 if (-not ($companionSource.Contains('openMismatchLinks.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks') -and $companionSource.Contains('copyMismatchReport.Pressed += MultiplayerMismatchActions.CopyLastReport'))) {
     Fail "Management dialog no longer exposes multiplayer mismatch report actions"
 }
-if (-not ($companionSource.Contains("UiLayoutStore") -and $companionSource.Contains("ui-layout.json") -and $companionSource.Contains("AttachLongPressDrag") -and $companionSource.Contains("AttachDragSurface"))) {
-    Fail "Companion source no longer supports persistent draggable ModTheSpire2 UI controls"
-}
 if ($companionSource.Contains("Apply Hot Changes") -or $companionSource.Contains("Apply selected Runtime Hot-Apply and Apply at Main Menu changes.")) {
     Fail "Companion source still exposes player-facing Hot-Apply controls in the clean restart UI"
 }
-if (-not ($companionSource.Contains("FindLatestSettingsFile") -and $companionSource.Contains("EnumerateSettingsSearchRoots") -and $companionSource.Contains("OrderByDescending(file => file.LastWriteTimeUtc)") -and $companionSource.Contains("Hot apply backup created:"))) {
-    Fail "Companion source no longer selects the newest settings.save before Hot-Apply backup"
+if ($companionSource.Contains("ForceJoin") -or $companionSource.Contains("BypassModMismatch") -or $companionSource.Contains("SubscribeItem")) {
+    Fail "Companion source appears to expose force-join, mismatch-bypass, or auto-subscribe behavior"
+}
+if (-not ($companionSource.Contains("Whole-mod changes require closing the game and reopening the launcher.") -and $companionSource.Contains("Close and Open Launcher") -and $companionSource.Contains("BuildRestartLauncherArguments"))) {
+    Fail "Companion source no longer preserves the clean restart-manager workflow"
 }
 if (-not ($classifierSource.Contains("invalid manifest; restart required") -and $classifierSource.Contains("GetFileNameWithoutExtension") -and $classifierSource.Contains("Test-PayloadFileInModDir"))) {
     Fail "Classifier source no longer has the conservative invalid-manifest fallback"
