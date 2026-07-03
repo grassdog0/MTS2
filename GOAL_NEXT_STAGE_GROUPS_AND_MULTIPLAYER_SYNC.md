@@ -1,10 +1,10 @@
-# Goal Prompt - Stable Launcher, Grouping Research, And Multiplayer Sync
+# Goal Prompt - Stable Launcher, Grouping Refinement, And Multiplayer Sync
 
 ## Objective
 
-Continue ModTheSpire2 from the latest stable clean launcher release. Keep the product simple and reliable: startup mod selection, saved profiles, dependency-aware order, and quick close/restart. Do not return to broad whole-mod hot-apply work.
+Continue ModTheSpire2 from the latest published clean launcher release. Keep the product simple and reliable: startup mod selection, saved profiles, dependency-aware order, optional grouping, and quick close/restart. Do not return to broad whole-mod hot-apply work.
 
-The current task is not to invent a new UI direction. Treat the latest player-feedback fixes as the published baseline, keep them regression-protected, then carefully research and implement optional grouping and multiplayer mod-list synchronization.
+The current task is not to invent a new UI direction. Treat the current published build as the rollback point, keep the launcher/profile/settings.save fixes regression-protected, then carefully refine optional grouping and research safe multiplayer mod-list synchronization.
 
 ## Current Published Baseline
 
@@ -12,18 +12,20 @@ Use the currently uploaded build as the stable rollback point.
 
 - GitHub repository: `https://github.com/grassdog0/MTS2`
 - GitHub branch: `cross-platform-launcher`
-- GitHub commit: `f250fe5 Fix launcher profile and mod settings compatibility`
+- Code/package commit: `fe0e104 Document multiplayer mismatch findings`
 - Workshop item: `3747911678`
 - Local clean package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Uploader content: `C:\Users\HZDH\Desktop\tmp\Forimpro\ModUploader-win-x64\ModTheSpire2Workspace\content`
-- Timestamped backup package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\TestPackages\ModTheSpire2-0.4.0-current-upload-20260703-093016.zip`
+- Timestamped backup package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\TestPackages\ModTheSpire2-0.4.0-current-upload-20260703-100953.zip`
+- Package SHA256: `1F79C9E677E0CE9E3931527D4355299A86381B768CD74C685FF0FBCEAD4E7CCC`
 
 Known package hashes for this baseline:
 
 - `ModTheSpire2.dll`: `FB0D0DF59DF8450F4A788CD0641A6A411DA0EDB2C7A62C8B1B4F74D1AC56698A`
-- `ModTheSpire2Launcher.exe`: `3B11D11860DC9D01E2E1AB927C2B9E975688891B885AE88D2005CF7C5365A3C2`
+- `ModTheSpire2Launcher.exe`: `DEE9C2C666435D0FF0DFAD243AA409616CD154A63D9A38223B7A15A6E756A7E2`
+- `README.md`: `4CB18911A2A361CC3914809E1D022A52F21D08E0C36EBAB2BC9E19B79E7DB29B`
 
-If local source contains unverified experimental work, compare against this baseline before continuing. Do not package or upload experimental grouping, multiplayer, hot-apply, or draggable UI changes unless they have been explicitly implemented, tested, and accepted.
+If local source contains unverified experimental work, compare against this baseline before continuing. Do not package or upload experimental multiplayer, hot-apply, draggable UI, or invasive UI changes unless they have been explicitly implemented, tested, and accepted.
 
 ## Baseline Behavior To Preserve
 
@@ -44,10 +46,11 @@ If local source contains unverified experimental work, compare against this base
 - The launcher has one clear `Save` button. Select an existing profile or type a new profile name, then `Save` to update/create that profile.
 - Vanilla Launch disables mods for that launch only and must not erase or reorder the user's normal saved mod selection.
 - Dependency validation at launch checks selected/enabled mods only.
+- Dependency indentation/grouping must not change real launch order unless the user explicitly changes order.
 - In-game Settings / Mod Settings button remains a simple Close and Open Launcher confirmation flow.
 - Close and Open Launcher forwards the current game command line so renderer flags such as `--rendering-driver opengl3` are preserved.
 - Do not start a second STS2 instance while the current game is still running.
-- The in-game ModTheSpire2 button is refreshed after insertion so it remains visible and clickable when other mod-setting UI layers, including Better Mod Menu, are present.
+- The in-game ModTheSpire2 button remains visible and clickable when other mod-setting UI layers, including Better Mod Menu, are present.
 - `settings.save` enabled-state parsing uses exact ids and must not enable a mod by fuzzy substring match.
 
 ## Published Fixes To Preserve
@@ -55,8 +58,8 @@ If local source contains unverified experimental work, compare against this base
 The following player-reported issues have been addressed in the current published baseline and should be treated as regression-protected behavior, not as new feature work:
 
 - Keep the button visible and clickable when Better Mod Menu is enabled.
-- Do not reintroduce the previous draggable entrance control work. That path caused interaction and cleanup regressions.
-- Do not replace the simple Close and Open Launcher flow with the large management overlay.
+- Do not reintroduce the previous draggable entrance control work. That path caused interaction, cleanup, and layering regressions.
+- Do not replace the simple Close and Open Launcher flow with the old large management overlay.
 - Keep one primary `Save` button.
 - `Save` should create a new profile when the typed name does not exist.
 - `Save` should update an existing profile when the typed/selected name already exists.
@@ -74,7 +77,15 @@ The following player-reported issues have been addressed in the current publishe
 - Do not match enabled state by fuzzy substring when exact ids are available.
 - Keep focused fixtures/self-tests for overlapping ids/names such as `Tenshi Hinanawi Skin` and `Hina`.
 
-## Better Mod Menu Findings
+## Current Grouping State
+
+The current published Windows launcher already includes a low-risk grouping preview:
+
+- Adds a read-only `Group` column.
+- Reads Better Mod Menu `ModGroups` when present.
+- Falls back to ModTheSpire2 simple categories when Better Mod Menu has no usable group data.
+- Does not write Better Mod Menu files.
+- Does not change `settings.save`, enabled state, profiles, dependency checks, or launch order.
 
 Better Mod Menu is subscribed locally at:
 
@@ -109,24 +120,25 @@ It can also export CSV with columns:
 
 This makes Better Mod Menu grouping feasible as an optional read-only import, but the local `ModGroups` object may be empty. Do not make Better Mod Menu a hard dependency.
 
-## Grouping Feature Direction
+## Grouping Refinement Direction
 
-Implement grouping only after confirming the published stability fixes above still pass.
+Implement grouping refinements only after confirming the published stability fixes above still pass.
 
 Preferred order:
 
-1. Read Better Mod Menu group data if present and valid.
-2. Fall back to ModTheSpire2's own simple groups:
+1. Preserve the actual `settings.save` load order unless the user explicitly changes order in the launcher.
+2. Keep dependency indentation visible where possible.
+3. Read Better Mod Menu group data if present and valid.
+4. Fall back to ModTheSpire2's own simple groups:
    - Dependencies / libraries
    - Gameplay content
    - UI / QoL
    - Cosmetic
    - Utility / tools
    - Unknown
-3. Preserve the actual `settings.save` load order unless the user explicitly changes order in the launcher.
-4. Keep dependency indentation visible where possible.
 5. Never write Better Mod Menu files in the first implementation.
 6. If imported grouping fails, show a status message and fall back to MTS2 grouping.
+7. Any new grouping UI must remain secondary to the core launcher workflow: select mods, preserve order, save profile, launch once.
 
 ## Multiplayer Sync Feature Direction
 
@@ -148,6 +160,33 @@ Engineering guidance:
 - Do not silently subscribe through Steamworks unless a reliable, low-risk API path is proven.
 - Do not alter multiplayer network checks until the exact check location and consequences are understood.
 
+## Multiplayer Research Findings To Preserve
+
+Current evidence supports a cautious helper, not force bypass.
+
+Game XML evidence:
+
+- `ConnectionFailureExtraInfo.missingModsOnLocal`: mods the host has and the local player is missing.
+- `ConnectionFailureExtraInfo.missingModsOnHost`: mods the local player has and the host is missing.
+- `ConnectionFailureReason.ModMismatch`: host/local mod mismatch.
+- `ModManager.GetGameplayRelevantModNameList`: loaded gameplay-affecting mods used for multiplayer comparison.
+- `ModManager.GetNonGameplayRelevantModNameList`: non-gameplay loaded mods.
+- `JoinFlow.Begin(...)` can throw `ClientConnectionFailedException` on join failure.
+
+Local mod evidence:
+
+- `sts2-heybox-support.dll` contains strings showing patches for:
+  - `ModManager.GetGameplayRelevantModNameList`
+  - `JoinFlow.Begin`
+  - server-side mod detection
+- This proves bypass is technically possible, but also confirms bypass is invasive and should not be the default MTS2 direction.
+
+Unknowns:
+
+- Whether `missingModsOnLocal` / `missingModsOnHost` contain display names, mod ids, or both.
+- Whether Workshop ids are available from mismatch info.
+- Whether a stable public hook exists for reading mismatch details without invasive multiplayer patches.
+
 ## Multiplayer Research Tasks
 
 1. Search game/mod logs and user data for lobby mismatch messages and host mod-list serialization.
@@ -164,6 +203,11 @@ Engineering guidance:
    - load order
 4. Determine whether STS2 writes enough mismatch detail to logs or UI text that MTS2 can consume without patching game internals.
 5. Document whether bypassing mismatch is safe, unsafe, or requires per-mod compatibility rules.
+6. If safe enough, implement only read-only mismatch assistance first:
+   - show local missing mods;
+   - show host missing mods;
+   - map names to Workshop links where possible;
+   - offer Close and Open Launcher after the player changes subscriptions or profiles.
 
 ## Implementation Constraints
 
@@ -207,4 +251,4 @@ For every usable build:
 - Do not replace the stable Settings / Mod Settings button with the old large management overlay unless explicitly requested.
 - Do not make Better Mod Menu required.
 - Do not force multiplayer mismatch bypass before proving exact safety and failure modes.
-- Do not upload Workshop or push a new release until manual testing confirms the package.
+- Do not upload Workshop or push a new release candidate until manual testing confirms the package.
