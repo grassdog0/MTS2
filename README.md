@@ -10,6 +10,15 @@ Repository URL:
 https://github.com/grassdog0/MTS2
 ```
 
+## Current Test Build Notes
+
+- Keeps the simple restart-manager workflow: change whole-mod enablement in the launcher, then start the game.
+- Refreshes the in-game `ModTheSpire2 Launcher` button so it stays visible and interactive when other mod-setting UI layers are present.
+- The launcher now uses clearer profile wording: after changing order, choose or type a profile name, then click `Save`.
+- Added a regression check for overlapping mod ids/names, such as a disabled `Hina` entry next to enabled `TenshiHinanawi`, so `settings.save` enabled state must be read by exact id.
+- Adds read-only Better Mod Menu grouping import from `ModGroups` or CSV exports when available.
+- Adds an experimental read-only multiplayer mismatch helper with report, Workshop link, and copy-feedback actions.
+
 ## Features
 
 - Native Win32 launcher. Players do not need to install .NET to use the Windows launcher.
@@ -26,6 +35,7 @@ https://github.com/grassdog0/MTS2
 - Vanilla launch disables the global game mod switch for that launch but preserves the per-mod list and order for the next modded launch.
 - In-game ModTheSpire2 management entry on the game's Mod Settings page.
 - Clean in-game restart helper for changing whole-mod enablement through the launcher.
+- Read-only multiplayer mismatch report helper in ModTheSpire2 Management.
 - Restart-required treatment for DLL/PCK/UI/gameplay/unknown whole-mod changes.
 - Safe Close and Open Launcher flow that avoids starting a second game instance while the first is still running.
 - Close and Open Launcher forwards the current game command line, preserving renderer flags such as `--rendering-driver opengl3`.
@@ -68,6 +78,29 @@ macOS native Steam launch option:
 ```
 
 The Linux/macOS launchers are lightweight first-pass scripts. They do not yet provide the full Windows checkbox GUI.
+
+## Better Mod Menu Grouping
+
+The Windows launcher includes a read-only `Group` column. It tries Better Mod Menu `ModGroups` first, then Better Mod Menu CSV exports, then ModTheSpire2 fallback categories. It does not write Better Mod Menu files and does not require Better Mod Menu.
+
+## Multiplayer Mismatch Helper
+
+The multiplayer helper is experimental and read-only.
+
+When the game reports a multiplayer `ModMismatch`, ModTheSpire2 attempts to append help text to the existing error, record missing local/host mod details, and map known entries to Workshop links.
+
+Latest report:
+
+```text
+ModTheSpire2Data/multiplayer-mismatch-last.txt
+```
+
+In ModTheSpire2 Management:
+
+- `Open Missing Mod Links` opens Workshop links from the latest report.
+- `Copy Mismatch Report` copies the full report for feedback.
+
+This does not force join, bypass mismatch checks, auto-subscribe Workshop items, or change lobby/network state.
 
 ## Repository Layout
 
@@ -127,3 +160,4 @@ This folder is intentionally not part of the Workshop upload. It may contain:
 - `settings-backups/`
 - `launcher.log`
 - `companion.log`
+- `multiplayer-mismatch-last.txt`

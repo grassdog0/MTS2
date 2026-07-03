@@ -64,23 +64,30 @@ Version : 0.4.0
    - `Enabled For This Launch`
    - `Available But Disabled`
    - `Load Order`
-8. Confirm the overlay does not show player-facing Hot-Apply sections or buttons:
+8. Confirm the overlay shows a multiplayer mismatch report status panel.
+9. If no multiplayer mismatch has been recorded, confirm the panel says no report exists yet.
+10. Confirm the bottom buttons include:
+   - `Close and Open Launcher`
+   - `Open Missing Mod Links`
+   - `Copy Mismatch Report`
+   - `Close`
+11. Confirm the overlay does not show player-facing Hot-Apply sections or buttons:
    - no `Runtime Hot-Apply`
    - no `Apply at Main Menu`
    - no `Apply Hot Changes`
-9. Confirm rows show whether each mod is `Loaded`, `Enabled`, or `Disabled`.
-10. Hover rows if possible and confirm tooltips distinguish `Enabled in settings` from `Loaded this session`.
-11. Confirm rows/tooltips for mods with a minimum game version include `requires STS2 >= <version>`.
-12. Resize the game window or test in a smaller window and confirm:
+12. Confirm rows show whether each mod is `Loaded`, `Enabled`, or `Disabled`.
+13. Hover rows if possible and confirm tooltips distinguish `Enabled in settings` from `Loaded this session`.
+14. Confirm rows/tooltips for mods with a minimum game version include `requires STS2 >= <version>`.
+15. Resize the game window or test in a smaller window and confirm:
    - the dialog stays inside the visible game window
    - the mod list scrolls
    - `Close and Open Launcher`, `Close`, and the top-right `X` remain usable
-13. Confirm the overlay closes through:
+16. Confirm the overlay closes through:
    - top-right `X`
    - `Close`
    - clicking the dark backstop outside the panel
    - Esc key
-14. Check `companion.log` for:
+17. Check `companion.log` for:
    - `Management dialog shown`
    - `Load order section shown entries=`
    - `Management dialog closed:`
@@ -166,6 +173,30 @@ ModTheSpire2Data\order-profiles\<profile>.enabled.txt
 3. Confirm the game starts with the selected mods.
 4. Close the game.
 5. Reopen the launcher and confirm the same selected mods are shown because they are now in `settings.save`.
+
+## Multiplayer Mismatch Helper
+
+This helper is read-only and experimental. It must not bypass multiplayer checks or auto-subscribe Workshop items.
+
+1. Prepare a multiplayer join attempt where the host and local player have different gameplay-relevant mod lists.
+2. Join the host and trigger the game's mod mismatch error.
+3. Confirm the game's error text includes a `ModTheSpire2 help` section.
+4. Confirm the help text explains that the report is saved at:
+
+```text
+ModTheSpire2Data\multiplayer-mismatch-last.txt
+```
+
+5. Confirm the report file exists and includes:
+   - `ModTheSpire2 multiplayer mismatch report`
+   - missing local or host mods if the game exposed them
+   - Workshop links when ModTheSpire2 could map them
+   - `Raw NetErrorInfo`
+6. Open ModTheSpire2 Management.
+7. Confirm the mismatch status panel shows the latest report time and Workshop link count.
+8. Click `Copy Mismatch Report` and confirm the report text is copied to the clipboard.
+9. Click `Open Missing Mod Links` and confirm it opens only links from the latest report.
+10. Confirm this flow does not subscribe automatically and does not force the join to continue.
 
 ## Package Content
 
