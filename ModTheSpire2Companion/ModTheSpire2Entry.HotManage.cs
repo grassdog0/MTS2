@@ -1710,6 +1710,16 @@ internal static class ModManagementDialog
             restartButton.Pressed += () => RestartToLauncher.ShowConfirm(dialog);
             buttons.AddChild(restartButton);
 
+            var openMismatchLinks = CreateActionButton("Open Missing Mod Links");
+            openMismatchLinks.TooltipText = "Open Workshop links from the latest multiplayer mod mismatch report.";
+            openMismatchLinks.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks;
+            buttons.AddChild(openMismatchLinks);
+
+            var copyMismatchReport = CreateActionButton("Copy Mismatch Report");
+            copyMismatchReport.TooltipText = "Copy the latest multiplayer mod mismatch report for feedback.";
+            copyMismatchReport.Pressed += MultiplayerMismatchActions.CopyLastReport;
+            buttons.AddChild(copyMismatchReport);
+
             var close = CreateActionButton("Close");
             close.Pressed += () => CloseDialog("button");
             buttons.AddChild(close);
