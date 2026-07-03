@@ -151,7 +151,7 @@ This feature is read-only and must not modify Better Mod Menu files.
 2. Open the launcher and confirm the initial order and checked mods match the current `settings.save`.
 3. Confirm dependent mods can appear visually indented under earlier dependencies without changing the `settings.save` order.
 4. Confirm there is no separate `Load Profile` button.
-5. Confirm the profile combo shows `Current Game Settings`.
+5. Confirm the profile combo shows `Current settings.save`.
 6. Check one independent mod and leave an adjacent independent mod unchecked.
 7. Move the checked mod up or down.
 8. Confirm the checkbox follows that mod, not the row number.
@@ -163,7 +163,7 @@ This feature is read-only and must not modify Better Mod Menu files.
 14. Confirm the mod moves to that row number.
 15. Confirm values below 1 are treated as 1 and values above the mod count are treated as the last row.
 16. If a move violates dependency order, confirm the launcher repairs it and reports that order was adjusted.
-17. Click `Save Order`.
+17. Click `Save`.
 18. Confirm both files exist:
 
 ```text
@@ -171,12 +171,12 @@ ModTheSpire2Data\load-order.txt
 ModTheSpire2Data\enabled-mods.txt
 ```
 
-19. Try to save while the combo says `Current Game Settings`; confirm the launcher asks for a profile name instead of creating a default profile.
-20. Type a named profile with custom order and selected mods, then click `Save Profile`.
+19. Try to save while the combo says `Current settings.save`; confirm the launcher asks for a profile name instead of creating a default profile.
+20. Type a named profile with custom order and selected mods, then click `Save`.
 21. Change both order and checked mods.
 22. Select the named profile from the profile combo.
 23. Confirm both order and checked mods are restored immediately.
-24. Select `Current Game Settings` from the combo.
+24. Select `Current settings.save` from the combo.
 25. Confirm the list reloads from `settings.save`.
 26. Confirm the profile sidecar exists:
 
