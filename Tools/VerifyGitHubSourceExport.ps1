@@ -97,6 +97,14 @@ if ($readme.Contains("Conservative Hot-Apply") -or $readme.Contains("State-aware
     Fail "README still advertises Hot-Apply as a current player-facing workflow"
 }
 
+$manualTest = Get-Content -LiteralPath (Join-Path $source "MANUAL_TEST_0.4.0.md") -Raw
+if (-not ($manualTest.Contains("Current settings.save") -and $manualTest.Contains("Click ``Save``") -and $manualTest.Contains("Startup self-tests: mismatchLinks=True resolver=True"))) {
+    Fail "Manual test checklist no longer uses current launcher labels or startup self-test marker"
+}
+if ($manualTest.Contains("Current Game Settings") -or $manualTest.Contains("Save Order") -or $manualTest.Contains("Save Profile")) {
+    Fail "Manual test checklist still contains old launcher labels"
+}
+
 $sourceFiles = Get-ChildItem -LiteralPath $source -Recurse -File -Force | Where-Object {
     [System.IO.Path]::GetFullPath($_.FullName) -notlike ((Join-Path $sourceFull ".git") + "\*")
 }
