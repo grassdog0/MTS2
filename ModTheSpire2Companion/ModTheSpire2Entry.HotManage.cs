@@ -621,7 +621,7 @@ internal sealed class MismatchModResolver
     private readonly System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> byWorkshopId;
     private readonly ModScanner.ModSummary[] mods;
 
-    private MismatchModResolver(ModScanner.ModSummary[] mods)
+    internal MismatchModResolver(ModScanner.ModSummary[] mods)
     {
         this.mods = mods;
         byId = BuildUniqueMap(mods, mod => mod.Id);
@@ -640,6 +640,58 @@ internal sealed class MismatchModResolver
             CompanionLog.Write("Build mismatch mod resolver failed: " + ex.Message);
             return new MismatchModResolver([]);
         }
+    }
+
+    public static bool SelfTest()
+    {
+        var mods = new[]
+        {
+            new ModScanner.ModSummary(
+                "BaseLib",
+                "BaseLib",
+                ModSource.SteamWorkshop,
+                "3746969593",
+                "3.3.0",
+                "",
+                false,
+                true,
+                true,
+                true,
+                false,
+                "self-test",
+                [],
+                [],
+                [],
+                [],
+                ModScanner.HotApplyScope.RestartRequired),
+            new ModScanner.ModSummary(
+                "Act4Heart",
+                "Act 4 Heart",
+                ModSource.SteamWorkshop,
+                "3747537811",
+                "1.0.0",
+                "",
+                false,
+                true,
+                false,
+                false,
+                false,
+                "self-test",
+                ["BaseLib"],
+                [],
+                [],
+                [],
+                ModScanner.HotApplyScope.RestartRequired)
+        };
+        var resolver = new MismatchModResolver(mods);
+        var byId = resolver.Describe("Act4Heart");
+        var byName = resolver.Describe("Act 4 Heart");
+        var byUrl = resolver.Describe("https://steamcommunity.com/sharedfiles/filedetails/?id=3747537811");
+        var unknownUrl = resolver.Describe("https://steamcommunity.com/sharedfiles/filedetails/?id=1234567890");
+        return byId.Contains("3747537811", StringComparison.Ordinal)
+            && byName.Contains("Act4Heart", StringComparison.Ordinal)
+            && byUrl.Contains("Act 4 Heart", StringComparison.Ordinal)
+            && unknownUrl.Contains("1234567890", StringComparison.Ordinal);
     }
 
     public string Describe(string raw)

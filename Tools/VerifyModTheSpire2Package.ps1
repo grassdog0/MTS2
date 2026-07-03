@@ -100,6 +100,12 @@ if (-not ($companionSource.Contains("CreateIconButton") -and $companionSource.Co
 if (-not ($companionSource.Contains("BuildRestartLauncherArguments") -and $companionSource.Contains("System.Environment.GetCommandLineArgs()") -and $companionSource.Contains('args += " -- " + QuoteArg(current[0])') -and $companionSource.Contains("renderer flags such as --rendering-driver opengl3 are preserved"))) {
     Fail "Companion source no longer forwards the current game command line to the launcher restart flow"
 }
+if (-not ($companionSource.Contains("MultiplayerMismatchErrorPatch") -and $companionSource.Contains("NetErrorInfo") -and $companionSource.Contains("GetErrorString") -and $companionSource.Contains("missingModsOnLocal") -and $companionSource.Contains("missingModsOnHost") -and $companionSource.Contains("multiplayer-mismatch-last.txt"))) {
+    Fail "Companion source no longer exposes the read-only multiplayer mismatch helper"
+}
+if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource.Contains("public static bool SelfTest()") -and $companionSource.Contains("https://steamcommunity.com/sharedfiles/filedetails/?id=") -and $companionSource.Contains("Known local/subscribed mod index"))) {
+    Fail "Companion source no longer maps multiplayer mismatch entries to Workshop links"
+}
 if (-not ($companionSource.Contains("UiLayoutStore") -and $companionSource.Contains("ui-layout.json") -and $companionSource.Contains("AttachLongPressDrag") -and $companionSource.Contains("AttachDragSurface"))) {
     Fail "Companion source no longer supports persistent draggable ModTheSpire2 UI controls"
 }

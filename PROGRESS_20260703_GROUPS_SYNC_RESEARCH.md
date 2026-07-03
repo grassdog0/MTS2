@@ -166,6 +166,54 @@ Current launcher candidate:
 
 This is a test candidate, not a manually accepted Workshop release yet.
 
+## 2026-07-03 11:00 - Mismatch Resolver Regression Guard
+
+Added regression coverage for the Workshop-link resolver path.
+
+Changes:
+
+- Added `MismatchModResolver.SelfTest()` in `ModTheSpire2Companion/ModTheSpire2Entry.HotManage.cs`.
+- The self-test constructs a tiny in-memory mod index and verifies matching by:
+  - mod id;
+  - display name;
+  - Workshop URL / Workshop id;
+  - unknown Workshop URL fallback.
+- Added static verification gates to `Tools\VerifyModTheSpire2Package.ps1` so the mismatch helper, report file, resolver, Workshop URL mapping, and self-test method cannot be removed silently.
+
+Note:
+
+- I tried a standalone PowerShell reflection runner for `SelfTest()`, but it is not portable in this workspace because the compiled companion targets the game's .NET 9 runtime and the host PowerShell cannot load that `System.Private.CoreLib` graph directly.
+- The retained verification path is source gate plus normal companion DLL compilation and package verification.
+
+Verification:
+
+```powershell
+dotnet C:\Program Files\dotnet\sdk\8.0.402\Roslyn\bincore\csc.dll ... ModTheSpire2Entry.HotManage.cs
+```
+
+Result: compiled.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Result: `Status OK`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `607.68 KB`.
+
+Current DLL candidate:
+
+- SHA256: `3B4FF50CB6DA548E831887F80A15A29303F263735E1AFFB43B15F5304C9EB65B`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.
+
 ## 2026-07-03 10:50 - Multiplayer Mismatch Workshop Link Mapping
 
 Extended the read-only multiplayer mismatch helper in `ModTheSpire2Companion/ModTheSpire2Entry.HotManage.cs`.
