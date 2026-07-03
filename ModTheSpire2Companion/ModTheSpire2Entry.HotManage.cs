@@ -874,6 +874,36 @@ internal static class MultiplayerMismatchActions
         }
     }
 
+    public static void CopyLastReport()
+    {
+        try
+        {
+            var path = GetReportPath();
+            if (!File.Exists(path))
+            {
+                NativeMessageBox.Show(
+                    "No multiplayer mismatch report was found yet.\n\nTry joining the host once, then copy the report after ModTheSpire2 records the mismatch.",
+                    "ModTheSpire2");
+                return;
+            }
+
+            var report = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(report))
+            {
+                NativeMessageBox.Show("The latest multiplayer mismatch report is empty.", "ModTheSpire2");
+                return;
+            }
+
+            DisplayServer.ClipboardSet(report);
+            NativeMessageBox.Show("Copied the latest multiplayer mismatch report to the clipboard.", "ModTheSpire2");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Copy mismatch report failed: " + ex);
+            NativeMessageBox.Show("Could not copy the multiplayer mismatch report:\n" + ex.Message, "ModTheSpire2");
+        }
+    }
+
     public static string GetReportPath() => Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data", "multiplayer-mismatch-last.txt");
 
     public static string[] ReadLastWorkshopLinks()
@@ -4681,6 +4711,7 @@ internal static class DynamicModConfigType
         DefineButtonMethod(type, buttonAttributeType, "OpenManagementButton", "Open ModTheSpire2 Management", nameof(OpenManagementFromConfig));
         DefineButtonMethod(type, buttonAttributeType, "CopyLaunchOptionButton", "Copy Steam Launch Option", nameof(CopyLaunchOptionFromConfig));
         DefineButtonMethod(type, buttonAttributeType, "OpenMismatchWorkshopLinksButton", "Open Missing Mod Links", nameof(OpenMismatchWorkshopLinksFromConfig));
+        DefineButtonMethod(type, buttonAttributeType, "CopyMismatchReportButton", "Copy Mismatch Report", nameof(CopyMismatchReportFromConfig));
 
         var method = type.DefineMethod(
             "SetupConfigUI",
@@ -4742,6 +4773,11 @@ internal static class DynamicModConfigType
             links.TooltipText = "Open Workshop links from the latest multiplayer mod mismatch report.";
             links.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks;
             row.AddChild(links);
+
+            var copyReport = CreateConfigButton("Copy Mismatch Report");
+            copyReport.TooltipText = "Copy the latest multiplayer mismatch report for feedback.";
+            copyReport.Pressed += MultiplayerMismatchActions.CopyLastReport;
+            row.AddChild(copyReport);
         }
         catch (Exception ex)
         {
@@ -4751,7 +4787,7 @@ internal static class DynamicModConfigType
 
     private static Button CreateConfigButton(string text)
     {
-        var button = UiStyle.CreateButton(text, 220, 46);
+        var button = UiStyle.CreateButton(text, 205, 46);
         button.TooltipText = text;
         return button;
     }
@@ -4772,6 +4808,11 @@ internal static class DynamicModConfigType
     public static void OpenMismatchWorkshopLinksFromConfig()
     {
         MultiplayerMismatchActions.OpenLastWorkshopLinks();
+    }
+
+    public static void CopyMismatchReportFromConfig()
+    {
+        MultiplayerMismatchActions.CopyLastReport();
     }
 }
 

@@ -166,6 +166,54 @@ Current launcher candidate:
 
 This is a test candidate, not a manually accepted Workshop release yet.
 
+## 2026-07-03 11:18 - Copy Mismatch Report Action
+
+Added a feedback-oriented action for multiplayer mismatch testing.
+
+Behavior:
+
+- Added `MultiplayerMismatchActions.CopyLastReport()`.
+- It reads `ModTheSpire2Data\multiplayer-mismatch-last.txt`.
+- If the report exists and is non-empty, it copies the full report to the clipboard.
+- If no report exists yet, it tells the player to trigger a multiplayer mismatch once first.
+- Added a `Copy Mismatch Report` button to the BaseLib ModConfig UI.
+- Added dynamic config method `CopyMismatchReportFromConfig`.
+- Reduced BaseLib config button width slightly so three buttons fit the row more reliably.
+
+Safety:
+
+- This only reads the latest MTS2 report and writes to the clipboard.
+- It does not alter game settings, subscriptions, lobby state, or network checks.
+
+Verification:
+
+```powershell
+dotnet C:\Program Files\dotnet\sdk\8.0.402\Roslyn\bincore\csc.dll ... ModTheSpire2Entry.HotManage.cs
+```
+
+Result: compiled.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Result: `Status OK`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `612.68 KB`.
+
+Current DLL candidate:
+
+- SHA256: `FE5187A41BA92C77E0ECA901FF53538A187C65CFA37B6586735B1A7015D10E68`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.
+
 ## 2026-07-03 11:10 - Open Missing Workshop Links Action
 
 Added a safe player action for the multiplayer mismatch helper.

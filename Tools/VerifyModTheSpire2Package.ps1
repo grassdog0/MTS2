@@ -109,6 +109,9 @@ if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource
 if (-not ($companionSource.Contains("MultiplayerMismatchActions") -and $companionSource.Contains("Open Missing Mod Links") -and $companionSource.Contains("MaxOpenLinks") -and $companionSource.Contains("ExtractWorkshopLinks") -and $companionSource.Contains("OpenMismatchWorkshopLinksFromConfig"))) {
     Fail "Companion source no longer exposes a safe way to open mismatch Workshop links"
 }
+if (-not ($companionSource.Contains("Copy Mismatch Report") -and $companionSource.Contains("CopyLastReport") -and $companionSource.Contains("DisplayServer.ClipboardSet(report)") -and $companionSource.Contains("CopyMismatchReportFromConfig"))) {
+    Fail "Companion source no longer exposes a safe way to copy mismatch reports"
+}
 if (-not ($companionSource.Contains("UiLayoutStore") -and $companionSource.Contains("ui-layout.json") -and $companionSource.Contains("AttachLongPressDrag") -and $companionSource.Contains("AttachDragSurface"))) {
     Fail "Companion source no longer supports persistent draggable ModTheSpire2 UI controls"
 }
