@@ -296,6 +296,7 @@ internal static class MultiplayerMismatchInfo
         var localMissing = new System.Collections.Generic.List<string>();
         var hostMissing = new System.Collections.Generic.List<string>();
         CollectMissingMods(info, localMissing, hostMissing, new System.Collections.Generic.HashSet<object>(ReferenceEqualityComparer.Instance), 0);
+        var resolver = MismatchModResolver.Create();
 
         var lines = new System.Collections.Generic.List<string>
         {
@@ -305,7 +306,7 @@ internal static class MultiplayerMismatchInfo
         if (localMissing.Count > 0)
         {
             lines.Add("Mods the host has but you are missing:");
-            lines.AddRange(localMissing.Take(MaxItems).Select(name => "- " + name));
+            lines.AddRange(localMissing.Take(MaxItems).Select(name => "- " + resolver.Describe(name)));
             if (localMissing.Count > MaxItems)
             {
                 lines.Add($"- ...and {localMissing.Count - MaxItems} more");
@@ -314,7 +315,7 @@ internal static class MultiplayerMismatchInfo
         if (hostMissing.Count > 0)
         {
             lines.Add("Mods you have but the host is missing:");
-            lines.AddRange(hostMissing.Take(MaxItems).Select(name => "- " + name));
+            lines.AddRange(hostMissing.Take(MaxItems).Select(name => "- " + resolver.Describe(name)));
             if (hostMissing.Count > MaxItems)
             {
                 lines.Add($"- ...and {hostMissing.Count - MaxItems} more");
@@ -329,7 +330,10 @@ internal static class MultiplayerMismatchInfo
         helpText = string.Join("\n", lines);
         reportText = "ModTheSpire2 multiplayer mismatch report\n"
             + "Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n\n"
-            + helpText + "\n\nRaw NetErrorInfo:\n" + SafeToString(info);
+            + helpText
+            + "\n\nKnown local/subscribed mod index:\n"
+            + resolver.BuildIndexReport()
+            + "\n\nRaw NetErrorInfo:\n" + SafeToString(info);
         return true;
     }
 
@@ -608,6 +612,175 @@ internal static class MultiplayerMismatchInfo
 
         public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
+}
+
+internal sealed class MismatchModResolver
+{
+    private readonly System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> byId;
+    private readonly System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> byName;
+    private readonly System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> byWorkshopId;
+    private readonly ModScanner.ModSummary[] mods;
+
+    private MismatchModResolver(ModScanner.ModSummary[] mods)
+    {
+        this.mods = mods;
+        byId = BuildUniqueMap(mods, mod => mod.Id);
+        byName = BuildUniqueMap(mods, mod => mod.Name);
+        byWorkshopId = BuildUniqueMap(mods.Where(mod => !string.IsNullOrWhiteSpace(mod.WorkshopId)).ToArray(), mod => mod.WorkshopId);
+    }
+
+    public static MismatchModResolver Create()
+    {
+        try
+        {
+            return new MismatchModResolver(ModScanner.Discover());
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Build mismatch mod resolver failed: " + ex.Message);
+            return new MismatchModResolver([]);
+        }
+    }
+
+    public string Describe(string raw)
+    {
+        var token = CleanToken(raw);
+        if (token.Length == 0)
+        {
+            return raw;
+        }
+        var workshopId = ExtractWorkshopId(token);
+        var mod = Resolve(token, workshopId);
+        if (mod is not null)
+        {
+            return FormatKnown(token, mod);
+        }
+        if (!string.IsNullOrWhiteSpace(workshopId))
+        {
+            return token + " [" + WorkshopUrl(workshopId) + "]";
+        }
+        return token;
+    }
+
+    public string BuildIndexReport()
+    {
+        if (mods.Length == 0)
+        {
+            return "<no local/subscribed mods discovered>";
+        }
+        return string.Join("\n", mods
+            .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(mod =>
+            {
+                var link = string.IsNullOrWhiteSpace(mod.WorkshopId) ? "" : " " + WorkshopUrl(mod.WorkshopId);
+                return "- " + mod.Name + " [" + mod.Id + "] source=" + mod.Source + " version=" + mod.Version + link;
+            }));
+    }
+
+    private ModScanner.ModSummary? Resolve(string token, string workshopId)
+    {
+        if (!string.IsNullOrWhiteSpace(workshopId) && byWorkshopId.TryGetValue(workshopId, out var byWorkshop))
+        {
+            return byWorkshop;
+        }
+        if (byId.TryGetValue(token, out var byExactId))
+        {
+            return byExactId;
+        }
+        if (byName.TryGetValue(token, out var byExactName))
+        {
+            return byExactName;
+        }
+
+        var normalized = Normalize(token);
+        foreach (var mod in mods)
+        {
+            if (Normalize(mod.Id) == normalized || Normalize(mod.Name) == normalized)
+            {
+                return mod;
+            }
+        }
+        return null;
+    }
+
+    private static string FormatKnown(string original, ModScanner.ModSummary mod)
+    {
+        var label = string.Equals(original, mod.Name, StringComparison.OrdinalIgnoreCase)
+            ? mod.Name
+            : original + " -> " + mod.Name;
+        var parts = new System.Collections.Generic.List<string> { label + " [" + mod.Id + "]" };
+        if (!string.IsNullOrWhiteSpace(mod.Version))
+        {
+            parts.Add("version " + mod.Version);
+        }
+        if (!string.IsNullOrWhiteSpace(mod.WorkshopId))
+        {
+            parts.Add(WorkshopUrl(mod.WorkshopId));
+        }
+        return string.Join(" | ", parts);
+    }
+
+    private static System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> BuildUniqueMap(ModScanner.ModSummary[] mods, Func<ModScanner.ModSummary, string> keySelector)
+    {
+        var groups = mods
+            .Select(mod => (Key: CleanToken(keySelector(mod)), Mod: mod))
+            .Where(item => item.Key.Length > 0)
+            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase);
+        var map = new System.Collections.Generic.Dictionary<string, ModScanner.ModSummary>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups)
+        {
+            var items = group.ToArray();
+            if (items.Length == 1)
+            {
+                map[group.Key] = items[0].Mod;
+            }
+        }
+        return map;
+    }
+
+    private static string ExtractWorkshopId(string text)
+    {
+        const string idMarker = "id=";
+        var idIndex = text.IndexOf(idMarker, StringComparison.OrdinalIgnoreCase);
+        if (idIndex >= 0)
+        {
+            return ReadDigits(text, idIndex + idMarker.Length);
+        }
+        var digits = ReadDigits(text, 0);
+        return digits.Length >= 8 ? digits : "";
+    }
+
+    private static string ReadDigits(string text, int start)
+    {
+        while (start < text.Length && !char.IsDigit(text[start]))
+        {
+            start++;
+        }
+        var end = start;
+        while (end < text.Length && char.IsDigit(text[end]))
+        {
+            end++;
+        }
+        return end > start ? text[start..end] : "";
+    }
+
+    private static string CleanToken(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return "";
+        }
+        return raw.Trim().Trim('[', ']', '"', '\'');
+    }
+
+    private static string Normalize(string text)
+    {
+        var cleaned = CleanToken(text);
+        return new string(cleaned.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    }
+
+    private static string WorkshopUrl(string workshopId) => "https://steamcommunity.com/sharedfiles/filedetails/?id=" + workshopId;
 }
 
 internal static class UiLayoutStore

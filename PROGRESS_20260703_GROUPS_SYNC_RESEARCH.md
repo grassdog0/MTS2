@@ -166,6 +166,52 @@ Current launcher candidate:
 
 This is a test candidate, not a manually accepted Workshop release yet.
 
+## 2026-07-03 10:50 - Multiplayer Mismatch Workshop Link Mapping
+
+Extended the read-only multiplayer mismatch helper in `ModTheSpire2Companion/ModTheSpire2Entry.HotManage.cs`.
+
+Behavior:
+
+- The mismatch helper now builds a local/subscribed mod index with `ModScanner.Discover()`.
+- Missing mod tokens from `missingModsOnLocal` / `missingModsOnHost` are resolved by:
+  - exact mod id;
+  - exact mod name;
+  - Workshop id extracted from a token or Workshop URL;
+  - normalized id/name fallback.
+- Resolved entries are displayed as:
+  `Name [Id] | version X | https://steamcommunity.com/sharedfiles/filedetails/?id=...`
+- The saved `multiplayer-mismatch-last.txt` report now includes a local/subscribed mod index for debugging and player feedback.
+- This remains informational only. It does not subscribe to Workshop items, force join, or alter network checks.
+
+Verification:
+
+```powershell
+dotnet C:\Program Files\dotnet\sdk\8.0.402\Roslyn\bincore\csc.dll ... ModTheSpire2Entry.HotManage.cs
+```
+
+Result: compiled.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Result: `Status OK`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `606.68 KB`.
+
+Current DLL candidate:
+
+- SHA256: `72040AF9A76EA594D1ADDFDD662078DBBEEA7D5339B035B098666DD9D3F8CCD2`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.
+
 ## 2026-07-03 10:38 - Read-Only Multiplayer Mismatch Helper
 
 Investigated multiplayer mismatch surfaces.
