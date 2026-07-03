@@ -26,6 +26,7 @@ typedef struct ModInfo {
     WCHAR version[MAX_TEXT];
     WCHAR minGameVersion[MAX_TEXT];
     WCHAR source[32];
+    WCHAR group[MAX_TEXT];
     WCHAR manifest[MAX_PATH * 2];
     WCHAR workshopId[MAX_TEXT];
     WCHAR deps[MAX_DEPS][MAX_TEXT];
@@ -74,6 +75,7 @@ static void JsonLoadBeforeIds(const char* json, WCHAR ids[MAX_DEPS][MAX_TEXT], i
 static BOOL LoadOrderFromPath(const WCHAR* path);
 static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList);
 static void RefreshList(void);
+static void ApplyModGroups(void);
 static void EnforceDependencyChecks(int changedIndex);
 static int PruneInvalidChecks(void);
 static BOOL DirectoryHasSidecarManifest(const WCHAR* path);
@@ -1787,6 +1789,160 @@ static BOOL HasTooLowGameVersion(int index, WCHAR* outRequired, int requiredCap,
     return TRUE;
 }
 
+static void FindSteamUserRoot(WCHAR* out, int cap) {
+    if (!out || cap <= 0) return;
+    out[0] = 0;
+    WCHAR roaming[MAX_PATH * 2];
+    DWORD len = GetEnvironmentVariableW(L"APPDATA", roaming, _countof(roaming));
+    if (len == 0 || len >= _countof(roaming)) return;
+    WCHAR steamRoot[MAX_PATH * 2];
+    swprintf(steamRoot, _countof(steamRoot), L"%ls\\SlayTheSpire2\\steam", roaming);
+    WCHAR search[MAX_PATH * 2];
+    swprintf(search, _countof(search), L"%ls\\*", steamRoot);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(search, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    FILETIME newest = {0};
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) continue;
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+        BOOL digits = TRUE;
+        for (int i = 0; fd.cFileName[i]; ++i) {
+            if (fd.cFileName[i] < L'0' || fd.cFileName[i] > L'9') {
+                digits = FALSE;
+                break;
+            }
+        }
+        if (!digits) continue;
+        if (CompareFileTime(&fd.ftLastWriteTime, &newest) >= 0) {
+            newest = fd.ftLastWriteTime;
+            swprintf(out, cap, L"%ls\\%ls", steamRoot, fd.cFileName);
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+static BOOL JsonObjectValueSpan(const char* json, const char* key, const char** outStart, const char** outEnd) {
+    if (!json || !key || !outStart || !outEnd) return FALSE;
+    char pattern[128];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char* p = strstr(JsonStart(json), pattern);
+    if (!p) return FALSE;
+    p = strchr(p + strlen(pattern), ':');
+    if (!p) return FALSE;
+    p = SkipWs(p + 1);
+    if (*p != '{') return FALSE;
+    const char* start = p;
+    BOOL inString = FALSE, escaped = FALSE;
+    int depth = 0;
+    while (*p) {
+        char c = *p;
+        if (inString) {
+            if (escaped) escaped = FALSE;
+            else if (c == '\\') escaped = TRUE;
+            else if (c == '"') inString = FALSE;
+        } else {
+            if (c == '"') inString = TRUE;
+            else if (c == '{') ++depth;
+            else if (c == '}') {
+                --depth;
+                if (depth == 0) {
+                    *outStart = start;
+                    *outEnd = p + 1;
+                    return TRUE;
+                }
+            }
+        }
+        ++p;
+    }
+    return FALSE;
+}
+
+static BOOL JsonStringInObjectByWideKey(const char* objectStart, const char* objectEnd, const WCHAR* wideKey, WCHAR* out, int cap) {
+    if (!objectStart || !objectEnd || !wideKey || !wideKey[0] || !out || cap <= 0) return FALSE;
+    out[0] = 0;
+    char key8[MAX_TEXT * 4];
+    WideToUtf82(wideKey, key8, sizeof(key8));
+    char pattern[MAX_TEXT * 4 + 4];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key8);
+    const char* p = objectStart;
+    while ((p = strstr(p, pattern)) != NULL && p < objectEnd) {
+        const char* colon = strchr(p + strlen(pattern), ':');
+        if (!colon || colon >= objectEnd) return FALSE;
+        const char* value = SkipWs(colon + 1);
+        if (value >= objectEnd || *value != '"') return FALSE;
+        ++value;
+        const char* start = value;
+        while (*value && value < objectEnd && *value != '"') {
+            if (*value == '\\' && value[1]) value += 2;
+            else ++value;
+        }
+        if (value > start) {
+            Utf8ToWide2(start, (int)(value - start), out, cap);
+            return out[0] != 0;
+        }
+        p += strlen(pattern);
+    }
+    return FALSE;
+}
+
+static void ApplyBetterModMenuGroups(void) {
+    WCHAR userRoot[MAX_PATH * 2];
+    FindSteamUserRoot(userRoot, _countof(userRoot));
+    if (!userRoot[0]) return;
+
+    WCHAR path[MAX_PATH * 2];
+    swprintf(path, _countof(path), L"%ls\\mod_data\\BetterModMenu\\mod_profiles.json", userRoot);
+    DWORD size = 0;
+    char* json = ReadFileBytes(path, &size);
+    if (!json) return;
+
+    const char* modGroupsStart = NULL;
+    const char* modGroupsEnd = NULL;
+    int imported = 0;
+    if (JsonObjectValueSpan(json, "ModGroups", &modGroupsStart, &modGroupsEnd)) {
+        for (int i = 0; i < g_modCount; ++i) {
+            WCHAR group[MAX_TEXT] = L"";
+            if (JsonStringInObjectByWideKey(modGroupsStart, modGroupsEnd, g_mods[i].id, group, _countof(group)) &&
+                group[0] && _wcsicmp(group, L"Unassigned") != 0) {
+                wcsncpy(g_mods[i].group, group, _countof(g_mods[i].group) - 1);
+                g_mods[i].group[_countof(g_mods[i].group) - 1] = 0;
+                ++imported;
+            }
+        }
+    }
+    if (imported > 0) AppendLogf(L"Imported Better Mod Menu groups=%d", imported);
+    else AppendLogf(L"Better Mod Menu groups unavailable or empty: %ls", path);
+    HeapFree(GetProcessHeap(), 0, json);
+}
+
+static BOOL NameOrIdContains(const ModInfo* mod, const WCHAR* text) {
+    return mod && text && text[0] && (wcsstr(mod->id, text) || wcsstr(mod->name, text));
+}
+
+static void ApplyFallbackGroup(ModInfo* mod) {
+    if (!mod || mod->group[0]) return;
+    if (mod->depCount == 0 && (mod->orderBeforeCount > 0 || NameOrIdContains(mod, L"Lib") || NameOrIdContains(mod, L"lib"))) {
+        wcscpy(mod->group, L"Dependencies / libraries");
+    } else if (!mod->affectsGameplay && (NameOrIdContains(mod, L"Menu") || NameOrIdContains(mod, L"Config") || NameOrIdContains(mod, L"Restart") || NameOrIdContains(mod, L"Save") || NameOrIdContains(mod, L"Intent"))) {
+        wcscpy(mod->group, L"UI / QoL");
+    } else if (!mod->affectsGameplay && (NameOrIdContains(mod, L"Skin") || NameOrIdContains(mod, L"skin"))) {
+        wcscpy(mod->group, L"Cosmetic");
+    } else if (mod->affectsGameplay) {
+        wcscpy(mod->group, L"Gameplay content");
+    } else if (!mod->affectsGameplay) {
+        wcscpy(mod->group, L"Utility / tools");
+    } else {
+        wcscpy(mod->group, L"Unknown");
+    }
+}
+
+static void ApplyModGroups(void) {
+    for (int i = 0; i < g_modCount; ++i) g_mods[i].group[0] = 0;
+    ApplyBetterModMenuGroups();
+    for (int i = 0; i < g_modCount; ++i) ApplyFallbackGroup(&g_mods[i]);
+}
+
 static int PruneInvalidChecks(void) {
     int pruned = 0;
     BOOL changed = TRUE;
@@ -1876,7 +2032,7 @@ static void RefreshStatusColumn(void) {
     for (int i = 0; i < g_modCount; ++i) {
         WCHAR statusText[MAX_TEXT] = L"";
         BuildStatusText(i, statusText, _countof(statusText));
-        ListView_SetItemText(g_list, i, 6, statusText);
+        ListView_SetItemText(g_list, i, 7, statusText);
     }
 }
 
@@ -2142,6 +2298,7 @@ static void RefreshList(void) {
     FindWorkshopDir(workshop, _countof(workshop));
     DiscoverRoot(workshop, L"Workshop");
     SortModsByCurrentSettings();
+    ApplyModGroups();
     AppendLogf(L"Refresh total mods=%d", g_modCount);
     g_enforcingChecks = TRUE;
     for (int i = 0; i < g_modCount; ++i) {
@@ -2161,16 +2318,17 @@ static void RefreshList(void) {
         ListView_SetItemText(g_list, i, 3, typeText);
         WCHAR orderText[32];
         swprintf(orderText, _countof(orderText), L"%d", i + 1);
-        ListView_SetItemText(g_list, i, 4, orderText);
+        ListView_SetItemText(g_list, i, 4, g_mods[i].group);
+        ListView_SetItemText(g_list, i, 5, orderText);
         WCHAR depText[MAX_TEXT] = L"";
         BuildDependencyText(i, depText, _countof(depText));
-        ListView_SetItemText(g_list, i, 5, depText);
+        ListView_SetItemText(g_list, i, 6, depText);
         if (settings && JsonBoolAfterId(settings, g_mods[i].id)) {
             ListView_SetCheckState(g_list, i, TRUE);
         }
         WCHAR statusText[MAX_TEXT] = L"";
         BuildStatusText(i, statusText, _countof(statusText));
-        ListView_SetItemText(g_list, i, 6, statusText);
+        ListView_SetItemText(g_list, i, 7, statusText);
     }
     int pruned = PruneInvalidChecks();
     RefreshStatusColumn();
@@ -2244,10 +2402,11 @@ static void RebuildListPreservingChecks(int selectedIndex) {
         ListView_SetItemText(g_list, i, 3, g_mods[i].affectsGameplay ? L"Gameplay" : L"Utility");
         WCHAR orderText[32];
         swprintf(orderText, _countof(orderText), L"%d", i + 1);
-        ListView_SetItemText(g_list, i, 4, orderText);
+        ListView_SetItemText(g_list, i, 4, g_mods[i].group);
+        ListView_SetItemText(g_list, i, 5, orderText);
         WCHAR depText[MAX_TEXT] = L"";
         BuildDependencyText(i, depText, _countof(depText));
-        ListView_SetItemText(g_list, i, 5, depText);
+        ListView_SetItemText(g_list, i, 6, depText);
         for (int c = 0; c < checkedCount; ++c) {
             if (_wcsicmp(checked[c], g_mods[i].id) == 0) {
                 ListView_SetCheckState(g_list, i, TRUE);
@@ -2256,7 +2415,7 @@ static void RebuildListPreservingChecks(int selectedIndex) {
         }
         WCHAR statusText[MAX_TEXT] = L"";
         BuildStatusText(i, statusText, _countof(statusText));
-        ListView_SetItemText(g_list, i, 6, statusText);
+        ListView_SetItemText(g_list, i, 7, statusText);
     }
     g_enforcingChecks = FALSE;
     RefreshStatusColumn();
@@ -2632,9 +2791,10 @@ static BOOL RunHiddenListMoveTest(void) {
     col.cx = 100; col.pszText = (LPWSTR)L"ID"; ListView_InsertColumn(g_list, 1, &col);
     col.cx = 80; col.pszText = (LPWSTR)L"Source"; ListView_InsertColumn(g_list, 2, &col);
     col.cx = 80; col.pszText = (LPWSTR)L"Type"; ListView_InsertColumn(g_list, 3, &col);
-    col.cx = 60; col.pszText = (LPWSTR)L"Order"; ListView_InsertColumn(g_list, 4, &col);
-    col.cx = 100; col.pszText = (LPWSTR)L"Requirements"; ListView_InsertColumn(g_list, 5, &col);
-    col.cx = 120; col.pszText = (LPWSTR)L"Status"; ListView_InsertColumn(g_list, 6, &col);
+    col.cx = 100; col.pszText = (LPWSTR)L"Group"; ListView_InsertColumn(g_list, 4, &col);
+    col.cx = 60; col.pszText = (LPWSTR)L"Order"; ListView_InsertColumn(g_list, 5, &col);
+    col.cx = 100; col.pszText = (LPWSTR)L"Requirements"; ListView_InsertColumn(g_list, 6, &col);
+    col.cx = 120; col.pszText = (LPWSTR)L"Status"; ListView_InsertColumn(g_list, 7, &col);
 
     RebuildListPreservingChecks(0);
     int firstCount = ListView_GetItemCount(g_list);
@@ -3154,9 +3314,10 @@ static void AddColumns(void) {
     col.cx = 170; col.pszText = L"ID"; ListView_InsertColumn(g_list, 1, &col);
     col.cx = 85; col.pszText = (LPWSTR)L"Source"; ListView_InsertColumn(g_list, 2, &col);
     col.cx = 75; col.pszText = (LPWSTR)L"Type"; ListView_InsertColumn(g_list, 3, &col);
-    col.cx = 50; col.pszText = (LPWSTR)L"Order"; ListView_InsertColumn(g_list, 4, &col);
-    col.cx = 145; col.pszText = (LPWSTR)L"Requirements"; ListView_InsertColumn(g_list, 5, &col);
-    col.cx = 150; col.pszText = (LPWSTR)L"Status"; ListView_InsertColumn(g_list, 6, &col);
+    col.cx = 140; col.pszText = (LPWSTR)L"Group"; ListView_InsertColumn(g_list, 4, &col);
+    col.cx = 50; col.pszText = (LPWSTR)L"Order"; ListView_InsertColumn(g_list, 5, &col);
+    col.cx = 135; col.pszText = (LPWSTR)L"Requirements"; ListView_InsertColumn(g_list, 6, &col);
+    col.cx = 140; col.pszText = (LPWSTR)L"Status"; ListView_InsertColumn(g_list, 7, &col);
 }
 
 static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
@@ -3289,6 +3450,7 @@ static int RunDiagnostics(void) {
     DiscoverRoot(localRoot, L"Local");
     DiscoverRoot(workshopRoot, L"Workshop");
     SortModsByDependencies();
+    ApplyModGroups();
 
     AppendLogf(L"Diagnostic total mods=%d", g_modCount);
     for (int i = 0; i < g_modCount && i < 80; ++i) {
@@ -3296,7 +3458,7 @@ static int RunDiagnostics(void) {
         WCHAR statusText[MAX_TEXT] = L"";
         BuildDependencyText(i, depText, _countof(depText));
         BuildStatusText(i, statusText, _countof(statusText));
-        AppendLogf(L"Diagnostic mod[%d]=%ls id=%ls source=%ls depth=%d minGame=%ls deps=%ls status=%ls", i, g_mods[i].name, g_mods[i].id, g_mods[i].source, g_mods[i].depth, g_mods[i].minGameVersion, depText, statusText);
+        AppendLogf(L"Diagnostic mod[%d]=%ls id=%ls source=%ls group=%ls depth=%d minGame=%ls deps=%ls status=%ls", i, g_mods[i].name, g_mods[i].id, g_mods[i].source, g_mods[i].group, g_mods[i].depth, g_mods[i].minGameVersion, depText, statusText);
     }
     AppendLog(L"Diagnostic scan end");
 
@@ -3326,6 +3488,7 @@ static int RunOrderSelfTest(void) {
     DiscoverRoot(localRoot, L"Local");
     DiscoverRoot(workshopRoot, L"Workshop");
     SortModsByDependencies();
+    ApplyModGroups();
     AppendLogf(L"Order self-test mods=%d", g_modCount);
     if (g_modCount < 2) {
         AppendLog(L"Order self-test failed: not enough mods");
