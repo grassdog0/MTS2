@@ -18,19 +18,20 @@ C:\Users\HZDH\Desktop\tmp\Forimpro\PROGRESS_20260703_GROUPS_SYNC_RESEARCH.md
 
 ## Current Published Baseline
 
-The current public baseline has been uploaded to both GitHub and Workshop.
+The current public Workshop baseline has been uploaded. GitHub source has a local commit ready, but the push may still need to be retried if GitHub network access is unavailable.
 
 - GitHub: `https://github.com/grassdog0/MTS2`
 - Branch: `cross-platform-launcher`
-- Code/package commit: `fe0e104 Document multiplayer mismatch findings`
+- Latest local source commit prepared for GitHub: `d362b93 Document grouping and mismatch helper`
+- GitHub push status at the time of this goal update: local branch is ahead by 1 commit because `github.com:443` timed out during push.
 - Workshop item: `3747911678`
 - Verified clean package: `dist\WorkshopUpload\ModTheSpire2Content-Clean`
-- Timestamped backup package: `dist\TestPackages\ModTheSpire2-0.4.0-current-upload-20260703-100953.zip`
-- Package SHA256: `1F79C9E677E0CE9E3931527D4355299A86381B768CD74C685FF0FBCEAD4E7CCC`
+- Timestamped backup package: `dist\TestPackages\ModTheSpire2-0.4.0-cross-platform-mismatch-20260703-113950.zip`
+- Package SHA256: `94BE1C14179A713D07217149ED8A95390AECA81B6761234E3F10F62CC116D1B2`
 
-Treat this uploaded build as the stable rollback point. It includes the clean restart-manager workflow, the latest launcher/profile/settings.save fixes, the cross-platform script preview, and the launcher grouping preview.
+Treat this uploaded build as the stable rollback point. It includes the clean restart-manager workflow, the latest launcher/profile/settings.save fixes, the cross-platform script preview, Better Mod Menu grouping import, and the experimental read-only multiplayer mismatch helper.
 
-If local source contains newer experimental multiplayer, hot-apply, draggable UI, or invasive UI changes, compare it against this published baseline before continuing. Do not ship unverified experimental behavior.
+If local source contains newer experimental hot-apply, draggable UI, force-join multiplayer bypass, auto-subscribe, or invasive UI changes, compare it against this published baseline before continuing. Do not ship unverified experimental behavior.
 
 ## Next Direction
 
@@ -52,10 +53,12 @@ Regression-protect the current published behavior before larger new features:
 - `settings.save` enabled-state parsing uses exact ids, especially for overlapping names/ids such as `Hina` and `TenshiHinanawi`.
 - `Default` is a normal saved preset if present; it should not replace the live `Current settings.save` view, and it should not disappear unless the user explicitly deletes or overwrites it.
 
-The next active work should be low-risk grouping refinement and multiplayer synchronization research:
+The next active work should be stabilization and feedback-driven refinement:
 
-- Better Mod Menu grouping should remain optional and read-only at first.
-- If Better Mod Menu group data is unavailable, fall back to ModTheSpire2's own simple categories.
-- Multiplayer mod sync should first focus on showing host/local differences and opening Workshop pages. Do not bypass multiplayer mismatch checks until exact risks and failure modes are understood.
+- Confirm the uploaded Workshop build behaves like the local verified package.
+- Retry the GitHub push for `cross-platform-launcher` when network access to GitHub is available.
+- Keep Better Mod Menu grouping optional and read-only.
+- Improve multiplayer mismatch assistance only from real reports or confirmed game data.
+- Continue to avoid bypassing multiplayer mismatch checks, force joining, and auto-subscribing Workshop items until exact risks and failure modes are understood.
 
 Before implementation, read `GOAL_NEXT_STAGE_GROUPS_AND_MULTIPLAYER_SYNC.md` completely and treat it as the authoritative detailed target.

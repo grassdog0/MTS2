@@ -1,31 +1,32 @@
-# Goal Prompt - Stable Launcher, Grouping Refinement, And Multiplayer Sync
+# Goal Prompt - Stable Launcher, Grouping, And Safe Multiplayer Assistance
 
 ## Objective
 
 Continue ModTheSpire2 from the latest published clean launcher release. Keep the product simple and reliable: startup mod selection, saved profiles, dependency-aware order, optional grouping, and quick close/restart. Do not return to broad whole-mod hot-apply work.
 
-The current task is not to invent a new UI direction. Treat the current published build as the rollback point, keep the launcher/profile/settings.save fixes regression-protected, then carefully refine optional grouping and research safe multiplayer mod-list synchronization.
+The current task is not to invent a new UI direction. Treat the current Workshop build as the rollback point, keep the launcher/profile/settings.save fixes regression-protected, and refine the already-published optional grouping plus read-only multiplayer mismatch helper only from confirmed evidence.
 
 ## Current Published Baseline
 
-Use the currently uploaded build as the stable rollback point.
+Use the currently uploaded Workshop build as the stable rollback point.
 
 - GitHub repository: `https://github.com/grassdog0/MTS2`
 - GitHub branch: `cross-platform-launcher`
-- Code/package commit: `fe0e104 Document multiplayer mismatch findings`
+- Latest local source commit prepared for GitHub: `d362b93 Document grouping and mismatch helper`
+- GitHub push status at this checkpoint: local branch is ahead by 1 commit because `github.com:443` timed out during push. Retry later before claiming GitHub is fully updated.
 - Workshop item: `3747911678`
 - Local clean package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Uploader content: `C:\Users\HZDH\Desktop\tmp\Forimpro\ModUploader-win-x64\ModTheSpire2Workspace\content`
-- Timestamped backup package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\TestPackages\ModTheSpire2-0.4.0-current-upload-20260703-100953.zip`
-- Package SHA256: `1F79C9E677E0CE9E3931527D4355299A86381B768CD74C685FF0FBCEAD4E7CCC`
+- Timestamped backup package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\TestPackages\ModTheSpire2-0.4.0-cross-platform-mismatch-20260703-113950.zip`
+- Package SHA256: `94BE1C14179A713D07217149ED8A95390AECA81B6761234E3F10F62CC116D1B2`
 
 Known package hashes for this baseline:
 
-- `ModTheSpire2.dll`: `FB0D0DF59DF8450F4A788CD0641A6A411DA0EDB2C7A62C8B1B4F74D1AC56698A`
-- `ModTheSpire2Launcher.exe`: `DEE9C2C666435D0FF0DFAD243AA409616CD154A63D9A38223B7A15A6E756A7E2`
-- `README.md`: `4CB18911A2A361CC3914809E1D022A52F21D08E0C36EBAB2BC9E19B79E7DB29B`
+- `ModTheSpire2.dll`: `76B2B0101518552DDB7950F252B9F7CD38F4C4CB63C4AA389FED49F8932E9522`
+- `ModTheSpire2Launcher.exe`: `3F9C5809BA2107B8156ADD208EB01F0584E91DA93057DF1951A51507B5C55066`
+- `README.md`: `442348626154FF84EA7B502461E9A55B66B6F2DFAEC80ED59E3AE1B759CA6390`
 
-If local source contains unverified experimental work, compare against this baseline before continuing. Do not package or upload experimental multiplayer, hot-apply, draggable UI, or invasive UI changes unless they have been explicitly implemented, tested, and accepted.
+If local source contains unverified experimental work, compare against this baseline before continuing. Do not package or upload hot-apply, draggable UI, force-join multiplayer bypass, auto-subscribe, or invasive UI changes unless they have been explicitly implemented, tested, and accepted.
 
 ## Baseline Behavior To Preserve
 
@@ -79,7 +80,7 @@ The following player-reported issues have been addressed in the current publishe
 
 ## Current Grouping State
 
-The current published Windows launcher already includes a low-risk grouping preview:
+The current published Windows launcher includes a low-risk grouping preview:
 
 - Adds a read-only `Group` column.
 - Reads Better Mod Menu `ModGroups` when present.
@@ -122,7 +123,7 @@ This makes Better Mod Menu grouping feasible as an optional read-only import, bu
 
 ## Grouping Refinement Direction
 
-Implement grouping refinements only after confirming the published stability fixes above still pass.
+Implement grouping refinements only after confirming the published stability fixes above still pass. Grouping is a presentation aid, not a source of truth for launch order.
 
 Preferred order:
 
@@ -140,9 +141,9 @@ Preferred order:
 6. If imported grouping fails, show a status message and fall back to MTS2 grouping.
 7. Any new grouping UI must remain secondary to the core launcher workflow: select mods, preserve order, save profile, launch once.
 
-## Multiplayer Sync Feature Direction
+## Multiplayer Assistance Direction
 
-The user idea has two possible behaviors:
+The original user idea had two possible behaviors:
 
 1. Force bypass the game's mod mismatch block and join anyway.
 2. Show the host's mod list, help the player subscribe/install missing Workshop mods, then restart through ModTheSpire2.
@@ -150,8 +151,8 @@ The user idea has two possible behaviors:
 Engineering guidance:
 
 - Treat force bypass as dangerous and not the default path.
-- First determine where the game stores/transmits lobby host mod lists and mismatch checks.
-- Prefer a safe first feature:
+- The current published feature is a read-only mismatch helper. It appends help text to `ModMismatch` errors when possible, writes `ModTheSpire2Data\multiplayer-mismatch-last.txt`, and exposes `Open Missing Mod Links` / `Copy Mismatch Report`.
+- Prefer safe improvements:
   - detect mismatch information if exposed in logs, UI text, lobby metadata, or mod data;
   - display host vs local mod differences;
   - show missing Workshop item links;
@@ -187,23 +188,26 @@ Unknowns:
 - Whether Workshop ids are available from mismatch info.
 - Whether a stable public hook exists for reading mismatch details without invasive multiplayer patches.
 
-## Multiplayer Research Tasks
+## Multiplayer Follow-Up Tasks
 
-1. Search game/mod logs and user data for lobby mismatch messages and host mod-list serialization.
-2. Inspect subscribed multiplayer-related mods already present locally, especially:
+1. Test the published mismatch helper with real mismatch reports when possible.
+2. Confirm whether `missingModsOnLocal` / `missingModsOnHost` expose stable ids, display names, versions, or Workshop ids.
+3. Improve Workshop-link mapping only when the mapping is deterministic or clearly labelled as best effort.
+4. Search game/mod logs and user data for lobby mismatch messages and host mod-list serialization.
+5. Inspect subscribed multiplayer-related mods already present locally, especially:
    - `RemoveMultiplayerPlayerLimit`
    - `sts2unlimited`
    - `typing`
    - `sts2-heybox-support`
-3. Determine whether host mod lists include:
+6. Determine whether host mod lists include:
    - mod id
    - version
    - Workshop id / URL
    - enabled state
    - load order
-4. Determine whether STS2 writes enough mismatch detail to logs or UI text that MTS2 can consume without patching game internals.
-5. Document whether bypassing mismatch is safe, unsafe, or requires per-mod compatibility rules.
-6. If safe enough, implement only read-only mismatch assistance first:
+7. Determine whether STS2 writes enough mismatch detail to logs or UI text that MTS2 can consume without patching game internals.
+8. Document whether bypassing mismatch is safe, unsafe, or requires per-mod compatibility rules.
+9. If more functionality is safe enough, keep it read-only or explicit-user-action first:
    - show local missing mods;
    - show host missing mods;
    - map names to Workshop links where possible;
@@ -242,7 +246,11 @@ For every usable build:
    - Better Mod Menu enabled and disabled;
    - Settings / Mod Settings button remains clickable with Better Mod Menu enabled;
    - Close and Open Launcher preserves renderer flags;
-   - launcher still starts only one STS2 instance.
+   - launcher still starts only one STS2 instance;
+   - no mismatch report case is handled cleanly;
+   - mismatch report case writes `ModTheSpire2Data\multiplayer-mismatch-last.txt`;
+   - `Open Missing Mod Links` opens only links from the latest report;
+   - `Copy Mismatch Report` copies the latest report.
 
 ## Non-Goals
 
@@ -251,4 +259,5 @@ For every usable build:
 - Do not replace the stable Settings / Mod Settings button with the old large management overlay unless explicitly requested.
 - Do not make Better Mod Menu required.
 - Do not force multiplayer mismatch bypass before proving exact safety and failure modes.
-- Do not upload Workshop or push a new release candidate until manual testing confirms the package.
+- Do not auto-subscribe Workshop items without explicit proof of a safe Steamworks flow and explicit user approval.
+- Do not upload Workshop or push a new release candidate until manual testing confirms the package, except for documentation-only GitHub updates that clearly do not change packaged behavior.
