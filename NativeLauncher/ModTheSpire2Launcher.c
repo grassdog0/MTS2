@@ -10,8 +10,10 @@
 #include <shlobj.h>
 #include <uxtheme.h>
 #include <wchar.h>
+#include <wctype.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <string.h>
 
 #define MAX_MODS 1024
 #define MAX_TEXT 512
@@ -76,12 +78,16 @@ static BOOL LoadOrderFromPath(const WCHAR* path);
 static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList);
 static void RefreshList(void);
 static void ApplyModGroups(void);
+static int ApplyBetterModMenuGroupsFromJson(void);
+static int ApplyBetterModMenuGroupsFromCsvExports(void);
 static void EnforceDependencyChecks(int changedIndex);
 static int PruneInvalidChecks(void);
 static BOOL DirectoryHasSidecarManifest(const WCHAR* path);
 static void AppendLogf(const WCHAR* fmt, ...);
 static BOOL FindModListSpan(const char* json, DWORD size, DWORD* start, DWORD* len);
 static void SaveNamedProfile(void);
+static int FindUniqueModIndexByName(const WCHAR* name);
+static int FindUniqueModIndexByWorkshopId(const WCHAR* workshopId);
 
 static void DirName(WCHAR* path) {
     WCHAR* slash = wcsrchr(path, L'\\');
@@ -1886,16 +1892,163 @@ static BOOL JsonStringInObjectByWideKey(const char* objectStart, const char* obj
     return FALSE;
 }
 
-static void ApplyBetterModMenuGroups(void) {
+static void TrimWideInPlace(WCHAR* text) {
+    if (!text) return;
+    WCHAR* start = text;
+    while (*start && iswspace(*start)) ++start;
+    if (start != text) memmove(text, start, (wcslen(start) + 1) * sizeof(WCHAR));
+    size_t len = wcslen(text);
+    while (len > 0 && iswspace(text[len - 1])) {
+        text[--len] = 0;
+    }
+}
+
+static int CsvReadField(const char** cursor, WCHAR* out, int cap) {
+    if (!cursor || !*cursor || !out || cap <= 0) return -1;
+    out[0] = 0;
+    const char* p = *cursor;
+    if (*p == '\r' || *p == '\n' || *p == 0) return -1;
+
+    char field[MAX_TEXT * 4];
+    int n = 0;
+    BOOL quoted = FALSE;
+    if (*p == '"') {
+        quoted = TRUE;
+        ++p;
+    }
+    while (*p) {
+        if (quoted) {
+            if (*p == '"') {
+                if (p[1] == '"') {
+                    if (n < (int)sizeof(field) - 1) field[n++] = '"';
+                    p += 2;
+                    continue;
+                }
+                ++p;
+                if (*p == ',') {
+                    ++p;
+                    break;
+                }
+                if (*p == '\r' || *p == '\n' || *p == 0) break;
+                continue;
+            }
+        } else if (*p == ',' || *p == '\r' || *p == '\n') {
+            if (*p == ',') ++p;
+            break;
+        }
+        if (n < (int)sizeof(field) - 1) field[n++] = *p;
+        ++p;
+    }
+    field[n] = 0;
+    Utf8ToWide2(field, n, out, cap);
+    TrimWideInPlace(out);
+    *cursor = p;
+    return 0;
+}
+
+static const char* CsvNextLine(const char* p) {
+    if (!p) return NULL;
+    while (*p && *p != '\r' && *p != '\n') ++p;
+    if (*p == '\r') ++p;
+    if (*p == '\n') ++p;
+    return p;
+}
+
+static int CsvHeaderIndex(WCHAR headers[16][MAX_TEXT], int count, const WCHAR* name) {
+    for (int i = 0; i < count; ++i) {
+        if (_wcsicmp(headers[i], name) == 0) return i;
+    }
+    return -1;
+}
+
+static BOOL CsvWorkshopIdFromLink(const WCHAR* link, WCHAR* out, int cap) {
+    if (!out || cap <= 0) return FALSE;
+    out[0] = 0;
+    if (!link || !link[0]) return FALSE;
+    const WCHAR* id = wcsstr(link, L"id=");
+    if (id) id += 3;
+    else id = link;
+    while (*id && (*id < L'0' || *id > L'9')) ++id;
+    if (!*id) return FALSE;
+    const WCHAR* end = id;
+    while (*end >= L'0' && *end <= L'9') ++end;
+    if (end == id || end - id >= cap) return FALSE;
+    wcsncpy(out, id, (size_t)(end - id));
+    out[end - id] = 0;
+    return TRUE;
+}
+
+static int ApplyBetterModMenuCsvFile(const WCHAR* path) {
+    DWORD size = 0;
+    char* csv = ReadFileBytes(path, &size);
+    if (!csv) return 0;
+
+    const char* p = csv;
+    if ((unsigned char)p[0] == 0xEF && (unsigned char)p[1] == 0xBB && (unsigned char)p[2] == 0xBF) p += 3;
+    WCHAR headers[16][MAX_TEXT];
+    int headerCount = 0;
+    const char* h = p;
+    while (*h && *h != '\r' && *h != '\n' && headerCount < 16) {
+        if (CsvReadField(&h, headers[headerCount], MAX_TEXT) != 0) break;
+        ++headerCount;
+    }
+    int idCol = CsvHeaderIndex(headers, headerCount, L"Mod Id");
+    int nameCol = CsvHeaderIndex(headers, headerCount, L"Name");
+    int groupCol = CsvHeaderIndex(headers, headerCount, L"Group");
+    int linkCol = CsvHeaderIndex(headers, headerCount, L"Workshop Link");
+    if (groupCol < 0 || (idCol < 0 && nameCol < 0 && linkCol < 0)) {
+        HeapFree(GetProcessHeap(), 0, csv);
+        return 0;
+    }
+
+    p = CsvNextLine(p);
+    int imported = 0;
+    while (p && *p) {
+        if (*p == '\r' || *p == '\n') {
+            p = CsvNextLine(p);
+            continue;
+        }
+        WCHAR fields[16][MAX_TEXT];
+        for (int i = 0; i < 16; ++i) fields[i][0] = 0;
+        const char* row = p;
+        int fieldCount = 0;
+        while (*row && *row != '\r' && *row != '\n' && fieldCount < 16) {
+            if (CsvReadField(&row, fields[fieldCount], MAX_TEXT) != 0) break;
+            ++fieldCount;
+        }
+        if (groupCol < fieldCount && fields[groupCol][0] && _wcsicmp(fields[groupCol], L"Unassigned") != 0) {
+            int modIndex = -1;
+            if (idCol >= 0 && idCol < fieldCount) modIndex = FindModIndexById(fields[idCol]);
+            if (modIndex < 0 && linkCol >= 0 && linkCol < fieldCount) {
+                WCHAR workshopId[MAX_TEXT];
+                if (CsvWorkshopIdFromLink(fields[linkCol], workshopId, _countof(workshopId))) {
+                    modIndex = FindUniqueModIndexByWorkshopId(workshopId);
+                }
+            }
+            if (modIndex < 0 && nameCol >= 0 && nameCol < fieldCount) modIndex = FindUniqueModIndexByName(fields[nameCol]);
+            if (modIndex >= 0 && !g_mods[modIndex].group[0]) {
+                wcsncpy(g_mods[modIndex].group, fields[groupCol], _countof(g_mods[modIndex].group) - 1);
+                g_mods[modIndex].group[_countof(g_mods[modIndex].group) - 1] = 0;
+                ++imported;
+            }
+        }
+        p = CsvNextLine(p);
+    }
+    HeapFree(GetProcessHeap(), 0, csv);
+    if (imported > 0) AppendLogf(L"Imported Better Mod Menu CSV groups=%d from %ls", imported, path);
+    return imported;
+}
+
+static int ApplyBetterModMenuGroupsFromJson(void) {
     WCHAR userRoot[MAX_PATH * 2];
     FindSteamUserRoot(userRoot, _countof(userRoot));
-    if (!userRoot[0]) return;
+    if (!userRoot[0]) return 0;
 
     WCHAR path[MAX_PATH * 2];
     swprintf(path, _countof(path), L"%ls\\mod_data\\BetterModMenu\\mod_profiles.json", userRoot);
     DWORD size = 0;
     char* json = ReadFileBytes(path, &size);
-    if (!json) return;
+    if (!json) return 0;
 
     const char* modGroupsStart = NULL;
     const char* modGroupsEnd = NULL;
@@ -1914,6 +2067,51 @@ static void ApplyBetterModMenuGroups(void) {
     if (imported > 0) AppendLogf(L"Imported Better Mod Menu groups=%d", imported);
     else AppendLogf(L"Better Mod Menu groups unavailable or empty: %ls", path);
     HeapFree(GetProcessHeap(), 0, json);
+    return imported;
+}
+
+static void ScanBetterModMenuCsvDir(const WCHAR* dir, int* imported) {
+    if (!dir || !dir[0] || !imported || *imported > 0 || !DirExistsW2(dir)) return;
+    WCHAR search[MAX_PATH * 2];
+    swprintf(search, _countof(search), L"%ls\\*.csv", dir);
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(search, &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        WCHAR path[MAX_PATH * 2];
+        JoinPath(path, _countof(path), dir, fd.cFileName);
+        *imported += ApplyBetterModMenuCsvFile(path);
+        if (*imported > 0) break;
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+static int ApplyBetterModMenuGroupsFromCsvExports(void) {
+    WCHAR userRoot[MAX_PATH * 2];
+    FindSteamUserRoot(userRoot, _countof(userRoot));
+    int imported = 0;
+
+    if (userRoot[0]) {
+        WCHAR bmmDir[MAX_PATH * 2];
+        swprintf(bmmDir, _countof(bmmDir), L"%ls\\mod_data\\BetterModMenu", userRoot);
+        ScanBetterModMenuCsvDir(bmmDir, &imported);
+        WCHAR exportsDir[MAX_PATH * 2];
+        JoinPath(exportsDir, _countof(exportsDir), bmmDir, L"exports");
+        ScanBetterModMenuCsvDir(exportsDir, &imported);
+    }
+
+    WCHAR dataDir[MAX_PATH * 2];
+    JoinPath(dataDir, _countof(dataDir), g_appDir, L"ModTheSpire2Data");
+    ScanBetterModMenuCsvDir(dataDir, &imported);
+
+    if (imported == 0) AppendLog(L"Better Mod Menu CSV groups unavailable or empty");
+    return imported;
+}
+
+static void ApplyBetterModMenuGroups(void) {
+    int imported = ApplyBetterModMenuGroupsFromJson();
+    if (imported <= 0) imported = ApplyBetterModMenuGroupsFromCsvExports();
 }
 
 static BOOL NameOrIdContains(const ModInfo* mod, const WCHAR* text) {
@@ -2760,6 +2958,67 @@ static BOOL RunSelectedOnlyDependencyValidationSelfTest(void) {
     return TRUE;
 }
 
+static BOOL RunGroupingSelfTest(void) {
+    if (g_modCount < 1) {
+        AppendLog(L"Grouping self-test skipped: no mods");
+        return TRUE;
+    }
+
+    WCHAR firstId[MAX_TEXT];
+    wcscpy(firstId, g_mods[0].id);
+
+    WCHAR before[MAX_MODS][MAX_TEXT];
+    for (int i = 0; i < g_modCount; ++i) {
+        wcsncpy(before[i], g_mods[i].id, MAX_TEXT - 1);
+        before[i][MAX_TEXT - 1] = 0;
+    }
+
+    WCHAR csvPath[MAX_PATH * 2];
+    WCHAR dataDir[MAX_PATH * 2];
+    JoinPath(dataDir, _countof(dataDir), g_appDir, L"ModTheSpire2Data");
+    CreateDirectoryW(dataDir, NULL);
+    JoinPath(csvPath, _countof(csvPath), dataDir, L"better-mod-menu-group-self-test.csv");
+
+    char id8[MAX_TEXT * 4];
+    WideToUtf82(g_mods[0].id, id8, sizeof(id8));
+    char csv[4096];
+    snprintf(csv, sizeof(csv),
+             "Mod Id,Name,Version,Enabled,Group,Workshop Link\r\n"
+             "\"%s\",,,true,\"Self Test Group\",\r\n",
+             id8);
+    WriteFileBytes(csvPath, csv, (DWORD)strlen(csv));
+
+    for (int i = 0; i < g_modCount; ++i) g_mods[i].group[0] = 0;
+    int imported = ApplyBetterModMenuGroupsFromCsvExports();
+    DeleteFileW(csvPath);
+
+    if (imported <= 0) {
+        AppendLog(L"Grouping self-test failed: CSV group was not imported");
+        return FALSE;
+    }
+    int first = FindModIndexById(firstId);
+    if (first < 0 || _wcsicmp(g_mods[first].group, L"Self Test Group") != 0) {
+        AppendLog(L"Grouping self-test failed: imported CSV group did not apply to expected mod");
+        return FALSE;
+    }
+    for (int i = 0; i < g_modCount; ++i) {
+        if (_wcsicmp(before[i], g_mods[i].id) != 0) {
+            AppendLog(L"Grouping self-test failed: applying groups changed mod order");
+            return FALSE;
+        }
+    }
+
+    ApplyModGroups();
+    for (int i = 0; i < g_modCount; ++i) {
+        if (_wcsicmp(before[i], g_mods[i].id) != 0) {
+            AppendLog(L"Grouping self-test failed: ApplyModGroups changed mod order");
+            return FALSE;
+        }
+    }
+    AppendLog(L"Grouping self-test passed");
+    return TRUE;
+}
+
 static BOOL RunHiddenListMoveTest(void) {
     INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_LISTVIEW_CLASSES };
     InitCommonControlsEx(&icc);
@@ -3493,6 +3752,10 @@ static int RunOrderSelfTest(void) {
     if (g_modCount < 2) {
         AppendLog(L"Order self-test failed: not enough mods");
         return 2;
+    }
+
+    if (!RunGroupingSelfTest()) {
+        return 24;
     }
 
     if (!RunHiddenListMoveTest()) {

@@ -116,3 +116,52 @@ Recommended next step:
 4. If a host list can be read safely, implement a read-only mismatch report first:
    local missing mods, version differences, Workshop links when known, and a restart prompt.
 5. Do not implement force-join bypass until exact check points and failure modes are known.
+
+## 2026-07-03 10:25 - Grouping Refinement
+
+Implemented a small read-only grouping refinement in `NativeLauncher/ModTheSpire2Launcher.c`.
+
+Behavior:
+
+- Better Mod Menu JSON `ModGroups` remains the first grouping source.
+- If JSON groups are unavailable, the launcher now tries Better Mod Menu CSV exports with columns such as:
+  - `Mod Id`
+  - `Name`
+  - `Group`
+  - `Workshop Link`
+- CSV matching is read-only and can match by exact mod id, Workshop id extracted from the link, or unique display name.
+- Imported CSV groups only fill empty group fields and do not write Better Mod Menu files.
+- Grouping still falls back to ModTheSpire2 categories when no BMM group data exists.
+
+Verification added:
+
+- `RunGroupingSelfTest` writes a temporary minimal CSV under `ModTheSpire2Data`, imports one test group, then deletes it.
+- The self-test verifies that group import applies to the expected mod.
+- The self-test verifies that applying groups does not change the current mod order.
+
+Commands run:
+
+```powershell
+x86_64-w64-mingw32-gcc NativeLauncher\ModTheSpire2Launcher.c -municode -mwindows -O2 -Wall -Wextra -o NativeLauncher\ModTheSpire2Launcher.exe -lcomctl32 -lshell32 -lole32 -luuid -luxtheme
+```
+
+```powershell
+.\NativeLauncher\ModTheSpire2Launcher.exe --self-test-order -- "E:\SteamLibrary\steamapps\common\Slay the Spire 2\SlayTheSpire2.exe"
+```
+
+Result: `order_exit=0`, with `Grouping self-test passed` in the launcher log.
+
+```powershell
+.\NativeLauncher\ModTheSpire2Launcher.exe --self-test-settings -- "E:\SteamLibrary\steamapps\common\Slay the Spire 2\SlayTheSpire2.exe"
+```
+
+Result: `settings_exit=0`.
+
+Current launcher candidate:
+
+- SHA256: `3F9C5809BA2107B8156ADD208EB01F0584E91DA93057DF1951A51507B5C55066`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.
