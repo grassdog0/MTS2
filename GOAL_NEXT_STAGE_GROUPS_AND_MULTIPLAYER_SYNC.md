@@ -87,6 +87,7 @@ The current published Windows launcher includes a low-risk grouping preview:
 - Falls back to ModTheSpire2 simple categories when Better Mod Menu has no usable group data.
 - Does not write Better Mod Menu files.
 - Does not change `settings.save`, enabled state, profiles, dependency checks, or launch order.
+- Package verifier now guards this as read-only: real Better Mod Menu files must not be written, deleted, moved, or copied.
 
 Better Mod Menu is subscribed locally at:
 
@@ -245,6 +246,8 @@ For every usable build:
    - overlapping mod ids/names do not cause false enabled state;
    - Better Mod Menu enabled and disabled;
    - Settings / Mod Settings button remains clickable with Better Mod Menu enabled;
+   - Better Mod Menu grouping remains read-only and fallback groups appear when BMM data is unavailable;
+   - `companion.log` includes `Startup self-tests: mismatchLinks=True resolver=True`;
    - Close and Open Launcher preserves renderer flags;
    - launcher still starts only one STS2 instance;
    - no mismatch report case is handled cleanly;
