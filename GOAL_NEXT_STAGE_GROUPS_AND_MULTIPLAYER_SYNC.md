@@ -4,7 +4,7 @@
 
 Continue ModTheSpire2 from the latest stable clean launcher release. Keep the product simple and reliable: startup mod selection, saved profiles, dependency-aware order, and quick close/restart. Do not return to broad whole-mod hot-apply work.
 
-The current task is not to invent a new UI direction. First stabilize the launcher and in-game entry based on player feedback, then carefully research optional grouping and multiplayer mod-list synchronization.
+The current task is not to invent a new UI direction. Treat the latest player-feedback fixes as the published baseline, keep them regression-protected, then carefully research and implement optional grouping and multiplayer mod-list synchronization.
 
 ## Current Published Baseline
 
@@ -12,16 +12,16 @@ Use the currently uploaded build as the stable rollback point.
 
 - GitHub repository: `https://github.com/grassdog0/MTS2`
 - GitHub branch: `cross-platform-launcher`
-- GitHub commit: `c521e79 Restore restart entry and simplify profile save`
+- GitHub commit: `f250fe5 Fix launcher profile and mod settings compatibility`
 - Workshop item: `3747911678`
 - Local clean package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Uploader content: `C:\Users\HZDH\Desktop\tmp\Forimpro\ModUploader-win-x64\ModTheSpire2Workspace\content`
-- Timestamped backup package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\TestPackages\ModTheSpire2-0.4.0-current-upload-20260703-082952.zip`
+- Timestamped backup package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\TestPackages\ModTheSpire2-0.4.0-current-upload-20260703-093016.zip`
 
 Known package hashes for this baseline:
 
-- `ModTheSpire2.dll`: `6774F091566CCE0472B7F10966F78BE4DA8566D8FF37AB4595B53B7009D72683`
-- `ModTheSpire2Launcher.exe`: `D1D3E322635F11C9E456550EAE4CEBEA38C7D45C1325EEC8F121AB36CDFCA109`
+- `ModTheSpire2.dll`: `FB0D0DF59DF8450F4A788CD0641A6A411DA0EDB2C7A62C8B1B4F74D1AC56698A`
+- `ModTheSpire2Launcher.exe`: `3B11D11860DC9D01E2E1AB927C2B9E975688891B885AE88D2005CF7C5365A3C2`
 
 If local source contains unverified experimental work, compare against this baseline before continuing. Do not package or upload experimental grouping, multiplayer, hot-apply, or draggable UI changes unless they have been explicitly implemented, tested, and accepted.
 
@@ -47,34 +47,16 @@ If local source contains unverified experimental work, compare against this base
 - In-game Settings / Mod Settings button remains a simple Close and Open Launcher confirmation flow.
 - Close and Open Launcher forwards the current game command line so renderer flags such as `--rendering-driver opengl3` are preserved.
 - Do not start a second STS2 instance while the current game is still running.
+- The in-game ModTheSpire2 button is refreshed after insertion so it remains visible and clickable when other mod-setting UI layers, including Better Mod Menu, are present.
+- `settings.save` enabled-state parsing uses exact ids and must not enable a mod by fuzzy substring match.
 
-## Immediate Player Feedback To Address
+## Published Fixes To Preserve
 
-### 1. Better Mod Menu Overlay Compatibility
+The following player-reported issues have been addressed in the current published baseline and should be treated as regression-protected behavior, not as new feature work:
 
-Current problem report:
-
-- In Settings / Mod Settings, the ModTheSpire2 button can be covered by Better Mod Menu and become unclickable.
-- A previous Workshop version reportedly had a working approach.
-
-Required direction:
-
-- Find the last known working in-game button implementation if needed.
 - Keep the button visible and clickable when Better Mod Menu is enabled.
 - Do not reintroduce the previous draggable entrance control work. That path caused interaction and cleanup regressions.
 - Do not replace the simple Close and Open Launcher flow with the large management overlay.
-
-### 2. Profile Save And Default Behavior
-
-Current problem report:
-
-- Creating a new profile is confusing or may fail.
-- `Save Order`, `Reset Order`, and separate order controls are confusing.
-- Renaming/selecting a profile should not require a separate Load button.
-- The `Default` / `settings.save` relationship became unclear.
-
-Required direction:
-
 - Keep one primary `Save` button.
 - `Save` should create a new profile when the typed name does not exist.
 - `Save` should update an existing profile when the typed/selected name already exists.
@@ -83,41 +65,14 @@ Required direction:
 - `Current settings.save` is a live view and should not be overwritten as a normal named profile.
 - `Default` is a normal saved preset if present; do not let it replace or hide `Current settings.save`.
 - Do not delete or silently recreate `Default` without clear intent.
-
-### 3. Vanilla Launch Preservation
-
-Current problem report:
-
-- Vanilla Launch correctly disables mods for one launch, but can rearrange the mod order or make it hard to restore the previous order.
-
-Required direction:
-
 - Vanilla Launch should not mutate the user's normal per-mod enabled list or load order.
 - If a temporary vanilla `settings.save` write is needed, preserve enough state to restore the normal modded state on the next launcher view.
 - Back up `settings.save` before writing.
-
-### 4. Selected-Only Dependency Checks
-
-Current problem report:
-
-- Dependency order checks can run on disabled mods and become noisy.
-
-Required direction:
-
 - Dependency missing/order checks should only block or warn for enabled/selected mods.
 - Disabled mods may still show dependency metadata, but they should not block launch.
-
-### 5. Exact Mod Id Reading
-
-Current problem report:
-
-- With Tenshi Hinanawi Skin enabled, the launcher may incorrectly enable the Hina mod even when `settings.save` says Hina is false.
-
-Required direction:
-
 - Preserve and expand exact-id parsing from `settings.save`.
 - Do not match enabled state by fuzzy substring when exact ids are available.
-- Add a focused fixture or self-test for overlapping ids/names such as `Tenshi Hinanawi Skin` and `Hina`.
+- Keep focused fixtures/self-tests for overlapping ids/names such as `Tenshi Hinanawi Skin` and `Hina`.
 
 ## Better Mod Menu Findings
 
@@ -156,7 +111,7 @@ This makes Better Mod Menu grouping feasible as an optional read-only import, bu
 
 ## Grouping Feature Direction
 
-Implement grouping only after the immediate stability fixes above are passing.
+Implement grouping only after confirming the published stability fixes above still pass.
 
 Preferred order:
 
