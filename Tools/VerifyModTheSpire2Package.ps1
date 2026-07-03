@@ -115,6 +115,9 @@ if (-not ($companionSource.Contains("Copy Mismatch Report") -and $companionSourc
 if (-not ($companionSource.Contains("A full report is saved to ModTheSpire2Data\\multiplayer-mismatch-last.txt") -and $companionSource.Contains("Open ModTheSpire2 Management to use Open Missing Mod Links or Copy Mismatch Report"))) {
     Fail "Multiplayer mismatch helper no longer tells players where to find/report mismatch details"
 }
+if (-not ($companionSource.Contains("CreateMismatchReportPanel") -and $companionSource.Contains("Latest multiplayer mismatch report") -and $companionSource.Contains("Workshop links found") -and $companionSource.Contains("GetLastReportStatus"))) {
+    Fail "Management dialog no longer shows multiplayer mismatch report status"
+}
 if (-not ($companionSource.Contains('openMismatchLinks.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks') -and $companionSource.Contains('copyMismatchReport.Pressed += MultiplayerMismatchActions.CopyLastReport'))) {
     Fail "Management dialog no longer exposes multiplayer mismatch report actions"
 }

@@ -166,6 +166,55 @@ Current launcher candidate:
 
 This is a test candidate, not a manually accepted Workshop release yet.
 
+## 2026-07-03 11:42 - Mismatch Report Status In Management
+
+Improved the ModTheSpire2 management dialog so players can see whether a multiplayer mismatch report is available before pressing action buttons.
+
+Behavior:
+
+- Added `MultiplayerMismatchActions.GetLastReportStatus()`.
+- The management dialog now displays a small status panel below the game-state summary.
+- If a report exists, it shows:
+  - last modified timestamp;
+  - number of Workshop links found;
+  - a short instruction to use the buttons below.
+- If no report exists, it tells the player to trigger a mismatch once and reopen the panel.
+
+Safety:
+
+- Read-only status display.
+- Reads only `ModTheSpire2Data\multiplayer-mismatch-last.txt`.
+- Does not alter settings, subscriptions, lobby state, or multiplayer checks.
+
+Verification:
+
+```powershell
+dotnet C:\Program Files\dotnet\sdk\8.0.402\Roslyn\bincore\csc.dll ... ModTheSpire2Entry.HotManage.cs
+```
+
+Result: compiled.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Result: `Status OK`.
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `617.18 KB`.
+
+Current DLL candidate:
+
+- SHA256: `76B2B0101518552DDB7950F252B9F7CD38F4C4CB63C4AA389FED49F8932E9522`
+- Synced to:
+  - `dist\WorkshopUpload\ModTheSpire2Content-Clean`
+  - `ModUploader-win-x64\ModTheSpire2Workspace\content`
+
+This is a test candidate, not a manually accepted Workshop release yet.
+
 ## 2026-07-03 11:32 - Actionable Mismatch Help Text
 
 Improved the player-facing multiplayer mismatch help text.

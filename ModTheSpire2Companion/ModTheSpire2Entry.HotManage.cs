@@ -910,6 +910,26 @@ internal static class MultiplayerMismatchActions
 
     public static string GetReportPath() => Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data", "multiplayer-mismatch-last.txt");
 
+    public static MismatchReportStatus GetLastReportStatus()
+    {
+        try
+        {
+            var path = GetReportPath();
+            if (!File.Exists(path))
+            {
+                return new MismatchReportStatus(false, 0, DateTime.MinValue, path);
+            }
+            var modified = File.GetLastWriteTime(path);
+            var links = ReadLastWorkshopLinks().Length;
+            return new MismatchReportStatus(true, links, modified, path);
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Read mismatch report status failed: " + ex.Message);
+            return new MismatchReportStatus(false, 0, DateTime.MinValue, GetReportPath());
+        }
+    }
+
     public static string[] ReadLastWorkshopLinks()
     {
         var path = GetReportPath();
@@ -948,6 +968,8 @@ internal static class MultiplayerMismatchActions
             && links[0].EndsWith("1111111111", StringComparison.Ordinal)
             && links[1].EndsWith("2222222222", StringComparison.Ordinal);
     }
+
+    public readonly record struct MismatchReportStatus(bool Exists, int WorkshopLinkCount, DateTime LastModified, string Path);
 }
 
 internal static class UiLayoutStore
@@ -1653,7 +1675,10 @@ internal static class ModManagementDialog
             UiStyle.ApplyMutedLabel(intro);
             root.AddChild(intro);
 
-            root.AddChild(CreateStateSummaryPanel(gameState, mods.Length, enabledMods.Length, loadedMods.Length, metrics.ContentWidth));
+            var stateSummaryPanel = CreateStateSummaryPanel(gameState, mods.Length, enabledMods.Length, loadedMods.Length, metrics.ContentWidth);
+            root.AddChild(stateSummaryPanel);
+            var mismatchReportPanel = CreateMismatchReportPanel(metrics.ContentWidth);
+            root.AddChild(mismatchReportPanel);
 
             var scroll = new ScrollContainer
             {
@@ -1738,6 +1763,8 @@ internal static class ModManagementDialog
                 header.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
                 title.CustomMinimumSize = new Vector2(Math.Max(180, updated.ContentWidth - 244), 34);
                 intro.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
+                stateSummaryPanel.CustomMinimumSize = new Vector2(updated.ContentWidth, stateSummaryPanel.CustomMinimumSize.Y);
+                mismatchReportPanel.CustomMinimumSize = new Vector2(updated.ContentWidth, mismatchReportPanel.CustomMinimumSize.Y);
                 PositionPanel(dialog, panel);
             };
             PositionPanel(dialog, panel);
@@ -1841,6 +1868,32 @@ internal static class ModManagementDialog
         summary.AddThemeColorOverride("font_color", UiStyle.MutedTextColor);
         box.AddChild(summary);
 
+        return panel;
+    }
+
+    private static Control CreateMismatchReportPanel(float contentWidth)
+    {
+        var status = MultiplayerMismatchActions.GetLastReportStatus();
+        var panel = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(contentWidth, 58),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        var border = status.Exists ? UiStyle.AccentColor : UiStyle.MutedTextColor;
+        panel.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(new Color(0.095f, 0.067f, 0.045f, 0.92f), border, 1, 6));
+
+        var text = status.Exists
+            ? $"Latest multiplayer mismatch report: {status.LastModified:yyyy-MM-dd HH:mm:ss}, Workshop links found: {status.WorkshopLinkCount}. Use the buttons below to open links or copy the report."
+            : "No multiplayer mismatch report has been recorded yet. Try joining a host with a different gameplay mod list, then reopen this panel.";
+        var label = new Label
+        {
+            Text = text,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(contentWidth - 18, 52),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        UiStyle.ApplyMutedLabel(label);
+        panel.AddChild(label);
         return panel;
     }
 
