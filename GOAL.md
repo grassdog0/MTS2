@@ -22,8 +22,8 @@ The current public Workshop baseline has been uploaded, and GitHub source has be
 
 - GitHub: `https://github.com/grassdog0/MTS2`
 - Branch: `cross-platform-launcher`
-- GitHub source commit: `232a2d4 Align package verifier with restart manager goal`
 - GitHub push status at the time of this goal update: local `cross-platform-launcher` is synced with origin.
+- To confirm the exact current GitHub source commit, run `git rev-parse --short HEAD` and `git ls-remote origin refs/heads/cross-platform-launcher` inside the source export.
 - Workshop item: `3747911678`
 - Verified clean package: `dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Timestamped backup package: `dist\TestPackages\ModTheSpire2-0.4.0-cross-platform-mismatch-20260703-113950.zip`

@@ -12,8 +12,8 @@ Use the currently uploaded Workshop build as the stable rollback point.
 
 - GitHub repository: `https://github.com/grassdog0/MTS2`
 - GitHub branch: `cross-platform-launcher`
-- GitHub source commit: `232a2d4 Align package verifier with restart manager goal`
 - GitHub push status at this checkpoint: local `cross-platform-launcher` is synced with origin.
+- To confirm the exact current GitHub source commit, run `git rev-parse --short HEAD` and `git ls-remote origin refs/heads/cross-platform-launcher` inside the source export.
 - Workshop item: `3747911678`
 - Local clean package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Uploader content: `C:\Users\HZDH\Desktop\tmp\Forimpro\ModUploader-win-x64\ModTheSpire2Workspace\content`
