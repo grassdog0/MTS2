@@ -12,8 +12,8 @@ Use the currently uploaded Workshop build as the stable rollback point.
 
 - GitHub repository: `https://github.com/grassdog0/MTS2`
 - GitHub branch: `cross-platform-launcher`
-- Latest local source commit prepared for GitHub: `d362b93 Document grouping and mismatch helper`
-- GitHub push status at this checkpoint: local branch is ahead by 1 commit because `github.com:443` timed out during push. Retry later before claiming GitHub is fully updated.
+- Latest local source commit prepared for GitHub: `268b07b Update goal baseline after workshop upload`
+- GitHub push status at this checkpoint: local branch is ahead by 2 commits because `github.com:443` timed out / reset during push. Retry later before claiming GitHub is fully updated.
 - Workshop item: `3747911678`
 - Local clean package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Uploader content: `C:\Users\HZDH\Desktop\tmp\Forimpro\ModUploader-win-x64\ModTheSpire2Workspace\content`

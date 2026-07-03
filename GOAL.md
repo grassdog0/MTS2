@@ -22,8 +22,8 @@ The current public Workshop baseline has been uploaded. GitHub source has a loca
 
 - GitHub: `https://github.com/grassdog0/MTS2`
 - Branch: `cross-platform-launcher`
-- Latest local source commit prepared for GitHub: `d362b93 Document grouping and mismatch helper`
-- GitHub push status at the time of this goal update: local branch is ahead by 1 commit because `github.com:443` timed out during push.
+- Latest local source commit prepared for GitHub: `268b07b Update goal baseline after workshop upload`
+- GitHub push status at the time of this goal update: local branch is ahead by 2 commits because `github.com:443` timed out / reset during push.
 - Workshop item: `3747911678`
 - Verified clean package: `dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Timestamped backup package: `dist\TestPackages\ModTheSpire2-0.4.0-cross-platform-mismatch-20260703-113950.zip`
