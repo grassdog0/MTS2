@@ -12,8 +12,8 @@ Use the currently uploaded Workshop build as the stable rollback point.
 
 - GitHub repository: `https://github.com/grassdog0/MTS2`
 - GitHub branch: `cross-platform-launcher`
-- Latest local source commit prepared for GitHub: `268b07b Update goal baseline after workshop upload`
-- GitHub push status at this checkpoint: local branch is ahead by 2 commits because `github.com:443` timed out / reset during push. Retry later before claiming GitHub is fully updated.
+- GitHub push status at this checkpoint: local `cross-platform-launcher` branch is ahead of origin because `github.com:443` timed out / reset during push.
+- Before claiming GitHub is updated, run `git status --short --branch` and `git log --oneline origin/cross-platform-launcher..HEAD` inside the source export to inspect the exact pending commits, then retry `git push origin cross-platform-launcher`.
 - Workshop item: `3747911678`
 - Local clean package: `C:\Users\HZDH\Desktop\tmp\Forimpro\dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Uploader content: `C:\Users\HZDH\Desktop\tmp\Forimpro\ModUploader-win-x64\ModTheSpire2Workspace\content`

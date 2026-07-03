@@ -22,8 +22,8 @@ The current public Workshop baseline has been uploaded. GitHub source has a loca
 
 - GitHub: `https://github.com/grassdog0/MTS2`
 - Branch: `cross-platform-launcher`
-- Latest local source commit prepared for GitHub: `268b07b Update goal baseline after workshop upload`
-- GitHub push status at the time of this goal update: local branch is ahead by 2 commits because `github.com:443` timed out / reset during push.
+- GitHub push status at the time of this goal update: local `cross-platform-launcher` branch is ahead of origin because `github.com:443` timed out / reset during push.
+- Before claiming GitHub is updated, run `git status --short --branch` and `git log --oneline origin/cross-platform-launcher..HEAD` inside the source export to inspect the exact pending commits, then retry `git push origin cross-platform-launcher`.
 - Workshop item: `3747911678`
 - Verified clean package: `dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Timestamped backup package: `dist\TestPackages\ModTheSpire2-0.4.0-cross-platform-mismatch-20260703-113950.zip`
