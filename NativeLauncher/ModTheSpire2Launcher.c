@@ -2282,7 +2282,7 @@ static void MoveSelectedMod(int delta) {
     g_mods[index] = g_mods[target];
     g_mods[target] = tmp;
     RebuildListPreservingChecks(target);
-    SetWindowTextW(g_status, L"Order changed. Use Save Order to keep it for future launches.");
+    SetWindowTextW(g_status, L"Order changed. Choose or type a profile name, then Save.");
 }
 
 static BOOL TryMoveIndexForTest(int index, int delta) {
@@ -2415,6 +2415,189 @@ static BOOL RunDataFileBackupSelfTest(void) {
     }
     DeleteFileW(profilePath);
     AppendLog(L"Data-file backup self-test passed");
+    return TRUE;
+}
+
+static BOOL FileContainsUtf8Token(const WCHAR* path, const WCHAR* token) {
+    DWORD size = 0;
+    char* data = ReadFileBytes(path, &size);
+    if (!data) return FALSE;
+    char token8[MAX_TEXT * 4];
+    WideToUtf82(token, token8, sizeof(token8));
+    BOOL found = strstr(data, token8) != NULL;
+    HeapFree(GetProcessHeap(), 0, data);
+    return found;
+}
+
+static char* ReadModListSpanCopy(const WCHAR* path, DWORD* outLen) {
+    DWORD size = 0;
+    char* data = ReadFileBytes(path, &size);
+    if (!data) return NULL;
+    DWORD start = 0, len = 0;
+    if (!FindModListSpan(data, size, &start, &len)) {
+        HeapFree(GetProcessHeap(), 0, data);
+        return NULL;
+    }
+    char* copy = (char*)HeapAlloc(GetProcessHeap(), 0, len + 1);
+    if (!copy) {
+        HeapFree(GetProcessHeap(), 0, data);
+        return NULL;
+    }
+    memcpy(copy, data + start, len);
+    copy[len] = 0;
+    if (outLen) *outLen = len;
+    HeapFree(GetProcessHeap(), 0, data);
+    return copy;
+}
+
+static BOOL IsSelfTestSelectableAlone(int index) {
+    if (index < 0 || index >= g_modCount) return FALSE;
+    WCHAR depName[MAX_TEXT], required[MAX_TEXT], actual[MAX_TEXT];
+    if (HasMissingDependency(index, depName, _countof(depName))) return FALSE;
+    if (HasTooLowDependencyVersion(index, depName, _countof(depName), required, _countof(required), actual, _countof(actual))) return FALSE;
+    if (HasTooLowGameVersion(index, required, _countof(required), actual, _countof(actual))) return FALSE;
+    return g_mods[index].depCount == 0;
+}
+
+static BOOL RunNamedProfileSaveSelfTest(void) {
+    if (!g_list || g_modCount < 2) return TRUE;
+    int first = -1, second = -1;
+    for (int i = 0; i < g_modCount; ++i) {
+        if (!IsSelfTestSelectableAlone(i)) continue;
+        if (first < 0) first = i;
+        else {
+            second = i;
+            break;
+        }
+    }
+    if (first < 0 || second < 0) {
+        AppendLog(L"Named profile self-test skipped: not enough standalone selectable mods");
+        return TRUE;
+    }
+
+    const WCHAR* profileName = L"self-test-profile-save-update";
+    WCHAR profilePath[MAX_PATH * 2], enabledPath[MAX_PATH * 2];
+    GetProfilePath(profileName, profilePath, _countof(profilePath));
+    GetProfileEnabledPath(profileName, enabledPath, _countof(enabledPath));
+    DeleteFileW(profilePath);
+    DeleteFileW(enabledPath);
+
+    HWND oldCombo = g_profileCombo;
+    if (!g_profileCombo) {
+        g_profileCombo = CreateWindowW(WC_COMBOBOXW, L"", WS_CHILD | CBS_DROPDOWN, 0, 0, 120, 80, GetParent(g_list), NULL, g_instance, NULL);
+    }
+    if (!g_profileCombo) {
+        AppendLog(L"Named profile self-test failed: could not create profile combo");
+        return FALSE;
+    }
+
+    for (int i = 0; i < g_modCount; ++i) ListView_SetCheckState(g_list, i, FALSE);
+    ListView_SetCheckState(g_list, first, TRUE);
+    SetWindowTextW(g_profileCombo, profileName);
+    SaveNamedProfile();
+    if (!FileExistsW2(profilePath) || !FileExistsW2(enabledPath)) {
+        AppendLog(L"Named profile self-test failed: profile files were not created");
+        if (!oldCombo && g_profileCombo) DestroyWindow(g_profileCombo);
+        g_profileCombo = oldCombo;
+        return FALSE;
+    }
+    if (!FileContainsUtf8Token(enabledPath, g_mods[first].id) || FileContainsUtf8Token(enabledPath, g_mods[second].id)) {
+        AppendLog(L"Named profile self-test failed: initial enabled selection was not saved exactly");
+        if (!oldCombo && g_profileCombo) DestroyWindow(g_profileCombo);
+        g_profileCombo = oldCombo;
+        DeleteFileW(profilePath);
+        DeleteFileW(enabledPath);
+        return FALSE;
+    }
+
+    for (int i = 0; i < g_modCount; ++i) ListView_SetCheckState(g_list, i, FALSE);
+    ListView_SetCheckState(g_list, second, TRUE);
+    SetWindowTextW(g_profileCombo, profileName);
+    SaveNamedProfile();
+    if (FileContainsUtf8Token(enabledPath, g_mods[first].id) || !FileContainsUtf8Token(enabledPath, g_mods[second].id)) {
+        AppendLog(L"Named profile self-test failed: same-name Save did not update enabled selections");
+        if (!oldCombo && g_profileCombo) DestroyWindow(g_profileCombo);
+        g_profileCombo = oldCombo;
+        DeleteFileW(profilePath);
+        DeleteFileW(enabledPath);
+        return FALSE;
+    }
+
+    for (int i = 0; i < g_modCount; ++i) ListView_SetCheckState(g_list, i, FALSE);
+    if (!LoadEnabledFromPathToList(enabledPath)) {
+        AppendLog(L"Named profile self-test failed: updated profile enabled file did not load");
+        if (!oldCombo && g_profileCombo) DestroyWindow(g_profileCombo);
+        g_profileCombo = oldCombo;
+        DeleteFileW(profilePath);
+        DeleteFileW(enabledPath);
+        return FALSE;
+    }
+    if (ListView_GetCheckState(g_list, first) || !ListView_GetCheckState(g_list, second)) {
+        AppendLog(L"Named profile self-test failed: loaded updated profile did not restore expected checks");
+        if (!oldCombo && g_profileCombo) DestroyWindow(g_profileCombo);
+        g_profileCombo = oldCombo;
+        DeleteFileW(profilePath);
+        DeleteFileW(enabledPath);
+        return FALSE;
+    }
+
+    if (!oldCombo && g_profileCombo) DestroyWindow(g_profileCombo);
+    g_profileCombo = oldCombo;
+    DeleteFileW(profilePath);
+    DeleteFileW(enabledPath);
+    AppendLog(L"Named profile self-test passed");
+    return TRUE;
+}
+
+static BOOL RunSelectedOnlyDependencyValidationSelfTest(void) {
+    if (!g_list) return TRUE;
+    int base = FindModIndexById(L"BaseLib");
+    int quick = FindModIndexById(L"QuickRestart");
+    if (base < 0 || quick < 0) {
+        AppendLog(L"Selected-only dependency validation self-test skipped: BaseLib/QuickRestart not present");
+        return TRUE;
+    }
+
+    ModInfo* snapshot = (ModInfo*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ModInfo) * MAX_MODS);
+    if (!snapshot) {
+        AppendLog(L"Selected-only dependency validation self-test failed: out of memory");
+        return FALSE;
+    }
+    for (int i = 0; i < g_modCount; ++i) snapshot[i] = g_mods[i];
+
+    if (base < quick) {
+        MoveModToIndex(base, quick);
+    } else if (quick < base) {
+        MoveModToIndex(quick, base);
+    }
+    base = FindModIndexById(L"BaseLib");
+    quick = FindModIndexById(L"QuickRestart");
+    if (base < 0 || quick < 0 || base < quick) {
+        for (int i = 0; i < g_modCount; ++i) g_mods[i] = snapshot[i];
+        HeapFree(GetProcessHeap(), 0, snapshot);
+        AppendLog(L"Selected-only dependency validation self-test skipped: could not create invalid disabled order");
+        return TRUE;
+    }
+
+    RebuildListPreservingChecks(quick);
+    for (int i = 0; i < g_modCount; ++i) ListView_SetCheckState(g_list, i, FALSE);
+    WCHAR message[MAX_TEXT * 2];
+    BOOL allOk = ValidateDependencyOrder(message, _countof(message));
+    BOOL selectedOk = ValidateSelectedDependencyOrder(message, _countof(message));
+
+    for (int i = 0; i < g_modCount; ++i) g_mods[i] = snapshot[i];
+    HeapFree(GetProcessHeap(), 0, snapshot);
+    RebuildListPreservingChecks(0);
+
+    if (allOk) {
+        AppendLog(L"Selected-only dependency validation self-test failed: full validation did not detect invalid disabled order");
+        return FALSE;
+    }
+    if (!selectedOk) {
+        AppendLogf(L"Selected-only dependency validation self-test failed: selected-only validation blocked disabled mods: %ls", message);
+        return FALSE;
+    }
+    AppendLog(L"Selected-only dependency validation self-test passed");
     return TRUE;
 }
 
@@ -2606,6 +2789,24 @@ static BOOL RunHiddenListMoveTest(void) {
         }
     }
 
+    if (!RunNamedProfileSaveSelfTest()) {
+        DestroyWindow(g_list);
+        DestroyWindow(g_status);
+        DestroyWindow(host);
+        g_list = oldList;
+        g_status = oldStatus;
+        return FALSE;
+    }
+
+    if (!RunSelectedOnlyDependencyValidationSelfTest()) {
+        DestroyWindow(g_list);
+        DestroyWindow(g_status);
+        DestroyWindow(host);
+        g_list = oldList;
+        g_status = oldStatus;
+        return FALSE;
+    }
+
     DestroyWindow(g_list);
     DestroyWindow(g_status);
     DestroyWindow(host);
@@ -2699,7 +2900,7 @@ static void SaveNamedProfile(void) {
     WCHAR profile[MAX_PROFILE], path[MAX_PATH * 2], enabledPath[MAX_PATH * 2];
     GetCurrentProfileName(profile, _countof(profile));
     if (IsCurrentSettingsProfile(profile)) {
-        MessageBoxW(NULL, L"Type a profile name before saving. Current Game Settings is the live settings.save view and is not a named profile.", L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
+        MessageBoxW(NULL, L"Type a profile name before saving. Current settings.save is the live game settings view and is not a named profile.", L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
         return;
     }
     GetProfilePath(profile, path, _countof(path));
@@ -3334,6 +3535,68 @@ static int RunSettingsSelfTest(void) {
         AppendLogf(L"Settings self-test failed: expected newest file %ls", newFile);
         return 22;
     }
+    const char* overlapJson =
+        "{"
+        "\"mods_enabled\":true,"
+        "\"mod_list\":["
+        "{\"id\":\"Hina\",\"is_enabled\":false},"
+        "{\"id\":\"TenshiHinanawi\",\"is_enabled\":true},"
+        "{\"id\":\"HinanawiHinaSkin\",\"is_enabled\":true}"
+        "]"
+        "}";
+    if (JsonBoolAfterId(overlapJson, L"Hina")) {
+        AppendLog(L"Settings self-test failed: exact disabled Hina id was treated as enabled");
+        return 23;
+    }
+    if (!JsonBoolAfterId(overlapJson, L"TenshiHinanawi")) {
+        AppendLog(L"Settings self-test failed: exact enabled TenshiHinanawi id was not detected");
+        return 24;
+    }
+    if (JsonBoolAfterId(overlapJson, L"Tenshi")) {
+        AppendLog(L"Settings self-test failed: partial id Tenshi matched TenshiHinanawi");
+        return 25;
+    }
+    if (!JsonBoolAfterId(overlapJson, L"HinanawiHinaSkin")) {
+        AppendLog(L"Settings self-test failed: exact enabled HinanawiHinaSkin id was not detected");
+        return 26;
+    }
+
+    WCHAR oldSettingsFile[MAX_PATH * 2];
+    wcsncpy(oldSettingsFile, g_settingsFile, _countof(oldSettingsFile) - 1);
+    oldSettingsFile[_countof(oldSettingsFile) - 1] = 0;
+    WCHAR vanillaFile[MAX_PATH * 2];
+    JoinPath(vanillaFile, _countof(vanillaFile), root, L"vanilla-preserve-settings.save");
+    const char* vanillaJson =
+        "{"
+        "\"mods_enabled\": true,"
+        "\"mod_list\":["
+        "{\"id\":\"BaseLib\",\"is_enabled\":true,\"source\":\"steam_workshop\"},"
+        "{\"id\":\"QuickRestart\",\"is_enabled\":false,\"source\":\"steam_workshop\"}"
+        "],"
+        "\"tail\":\"keep\""
+        "}";
+    WriteFileBytes(vanillaFile, vanillaJson, (DWORD)strlen(vanillaJson));
+    DWORD beforeLen = 0;
+    char* beforeList = ReadModListSpanCopy(vanillaFile, &beforeLen);
+    wcsncpy(g_settingsFile, vanillaFile, _countof(g_settingsFile) - 1);
+    g_settingsFile[_countof(g_settingsFile) - 1] = 0;
+    WriteSettings(FALSE);
+    wcsncpy(g_settingsFile, oldSettingsFile, _countof(g_settingsFile) - 1);
+    g_settingsFile[_countof(g_settingsFile) - 1] = 0;
+    DWORD afterLen = 0, afterSize = 0;
+    char* afterList = ReadModListSpanCopy(vanillaFile, &afterLen);
+    char* afterJson = ReadFileBytes(vanillaFile, &afterSize);
+    BOOL vanillaOk = beforeList && afterList && beforeLen == afterLen && memcmp(beforeList, afterList, beforeLen) == 0 &&
+                     afterJson && strstr(afterJson, "\"mods_enabled\": false") != NULL &&
+                     strstr(afterJson, "\"mods_enabled\": true") == NULL;
+    if (beforeList) HeapFree(GetProcessHeap(), 0, beforeList);
+    if (afterList) HeapFree(GetProcessHeap(), 0, afterList);
+    if (afterJson) HeapFree(GetProcessHeap(), 0, afterJson);
+    if (!vanillaOk) {
+        AppendLog(L"Settings self-test failed: Vanilla write did not preserve mod_list exactly while disabling mods");
+        return 27;
+    }
+    DeleteFileW(vanillaFile);
     AppendLog(L"Settings self-test passed");
     return 0;
 }

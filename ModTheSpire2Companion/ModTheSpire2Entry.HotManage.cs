@@ -118,8 +118,10 @@ internal static class ModdingScreenButton
         try
         {
             CompanionLog.Write(source);
-            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is not null)
+            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Button existing)
             {
+                KeepButtonInteractive(existing);
+                CompanionLog.Write("Visible modding screen button refreshed from " + source + " under " + existing.GetParent()?.GetPath());
                 return;
             }
 
@@ -131,7 +133,7 @@ internal static class ModdingScreenButton
             {
                 buttonSize = template?.CustomMinimumSize ?? new Vector2(260, 56);
             }
-            var parent = modsBorder ?? template?.GetParent() as Control ?? screen;
+            var parent = screen;
 
             var restart = new Button
             {
@@ -145,7 +147,7 @@ internal static class ModdingScreenButton
                 MouseFilter = Control.MouseFilterEnum.Stop,
                 Visible = true,
                 TopLevel = false,
-                ZIndex = 100
+                ZIndex = 5000
             };
             UiStyle.ApplyButton(restart);
             restart.Pressed += () =>
@@ -154,13 +156,65 @@ internal static class ModdingScreenButton
                 RestartToLauncher.ShowConfirm(screen);
             };
             parent.AddChild(restart);
-            parent.MoveChild(restart, parent.GetChildCount() - 1);
-            restart.Show();
+            KeepButtonInteractive(restart);
+            ScheduleRefresh(screen, source);
             CompanionLog.Write("Visible modding screen button added from " + source + " under " + parent.GetPath());
         }
         catch (Exception ex)
         {
             CompanionLog.Write("Modding screen button failed from " + source + ": " + ex);
+        }
+    }
+
+    private static void KeepButtonInteractive(Button button)
+    {
+        button.Visible = true;
+        button.Disabled = false;
+        button.MouseFilter = Control.MouseFilterEnum.Stop;
+        button.ZIndex = 5000;
+        button.Show();
+        if (button.GetParent() is Node parent)
+        {
+            parent.MoveChild(button, parent.GetChildCount() - 1);
+        }
+    }
+
+    private static void ScheduleRefresh(NModdingScreen screen, string source)
+    {
+        try
+        {
+            RefreshAfterDelay(screen, source, 0.05);
+            RefreshAfterDelay(screen, source, 0.15);
+            RefreshAfterDelay(screen, source, 0.35);
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Modding screen button delayed refresh scheduling failed: " + ex.Message);
+        }
+    }
+
+    private static async void RefreshAfterDelay(NModdingScreen screen, string source, double seconds)
+    {
+        try
+        {
+            if (Engine.GetMainLoop() is not SceneTree tree)
+            {
+                return;
+            }
+            await tree.CreateTimer(seconds).ToSignal(tree, SceneTreeTimer.SignalName.Timeout);
+            if (!GodotObject.IsInstanceValid(screen))
+            {
+                return;
+            }
+            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Button button)
+            {
+                KeepButtonInteractive(button);
+                CompanionLog.Write($"Delayed modding screen button refresh after {seconds:0.00}s from {source}");
+            }
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Modding screen button delayed refresh failed: " + ex.Message);
         }
     }
 

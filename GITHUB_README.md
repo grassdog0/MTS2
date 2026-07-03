@@ -10,6 +10,13 @@ Repository URL:
 https://github.com/grassdog0/MTS2
 ```
 
+## Current Test Build Notes
+
+- Keeps the simple restart-manager workflow: change whole-mod enablement in the launcher, then start the game.
+- Refreshes the in-game `ModTheSpire2 Launcher` button so it stays visible and interactive when other mod-setting UI layers are present.
+- The launcher now uses clearer profile wording: after changing order, choose or type a profile name, then click `Save`.
+- Added a regression check for overlapping mod ids/names, such as a disabled `Hina` entry next to enabled `TenshiHinanawi`, so `settings.save` enabled state must be read by exact id.
+
 ## Features
 
 - Native Win32 launcher. Players do not need to install .NET to use the Windows launcher.
