@@ -18,12 +18,12 @@ C:\Users\HZDH\Desktop\tmp\Forimpro\PROGRESS_20260703_GROUPS_SYNC_RESEARCH.md
 
 ## Current Published Baseline
 
-The current public Workshop baseline has been uploaded. GitHub source has a local commit ready, but the push may still need to be retried if GitHub network access is unavailable.
+The current public Workshop baseline has been uploaded, and GitHub source has been pushed.
 
 - GitHub: `https://github.com/grassdog0/MTS2`
 - Branch: `cross-platform-launcher`
-- GitHub push status at the time of this goal update: local `cross-platform-launcher` branch is ahead of origin because `github.com:443` timed out / reset during push.
-- Before claiming GitHub is updated, run `git status --short --branch` and `git log --oneline origin/cross-platform-launcher..HEAD` inside the source export to inspect the exact pending commits, then retry `git push origin cross-platform-launcher`.
+- GitHub source commit: `232a2d4 Align package verifier with restart manager goal`
+- GitHub push status at the time of this goal update: local `cross-platform-launcher` is synced with origin.
 - Workshop item: `3747911678`
 - Verified clean package: `dist\WorkshopUpload\ModTheSpire2Content-Clean`
 - Timestamped backup package: `dist\TestPackages\ModTheSpire2-0.4.0-cross-platform-mismatch-20260703-113950.zip`
@@ -56,7 +56,7 @@ Regression-protect the current published behavior before larger new features:
 The next active work should be stabilization and feedback-driven refinement:
 
 - Confirm the uploaded Workshop build behaves like the local verified package.
-- Retry the GitHub push for `cross-platform-launcher` when network access to GitHub is available.
+- Keep GitHub `cross-platform-launcher` synchronized when future verifier, documentation, or package source changes are accepted.
 - Keep Better Mod Menu grouping optional and read-only.
 - Improve multiplayer mismatch assistance only from real reports or confirmed game data.
 - Continue to avoid bypassing multiplayer mismatch checks, force joining, and auto-subscribing Workshop items until exact risks and failure modes are understood.
