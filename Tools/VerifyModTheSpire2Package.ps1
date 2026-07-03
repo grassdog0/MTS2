@@ -109,6 +109,9 @@ if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource
 if (-not ($companionSource.Contains("MultiplayerMismatchActions") -and $companionSource.Contains("Open Missing Mod Links") -and $companionSource.Contains("MaxOpenLinks") -and $companionSource.Contains("ExtractWorkshopLinks") -and $companionSource.Contains("OpenMismatchWorkshopLinksFromConfig"))) {
     Fail "Companion source no longer exposes a safe way to open mismatch Workshop links"
 }
+if (-not ($companionSource.Contains("RunStartupSelfTests") -and $companionSource.Contains("MultiplayerMismatchActions.SelfTest()") -and $companionSource.Contains("MismatchModResolver.SelfTest()") -and $companionSource.Contains("Startup self-tests: mismatchLinks="))) {
+    Fail "Companion source no longer runs lightweight mismatch helper startup self-tests"
+}
 if (-not ($companionSource.Contains("Copy Mismatch Report") -and $companionSource.Contains("CopyLastReport") -and $companionSource.Contains("DisplayServer.ClipboardSet(report)") -and $companionSource.Contains("CopyMismatchReportFromConfig"))) {
     Fail "Companion source no longer exposes a safe way to copy mismatch reports"
 }

@@ -33,6 +33,7 @@ public static class ModTheSpire2Entry
         try
         {
             CompanionLog.Write("Initialize ModTheSpire2 " + BuildMarker);
+            RunStartupSelfTests();
             new Harmony(HarmonyId).PatchAll(Assembly.GetExecutingAssembly());
             ModConfigIntegration.TryRegister();
             CompanionLog.Write("PatchAll complete");
@@ -40,6 +41,20 @@ public static class ModTheSpire2Entry
         catch (Exception ex)
         {
             CompanionLog.Write("Initialize failed: " + ex);
+        }
+    }
+
+    private static void RunStartupSelfTests()
+    {
+        try
+        {
+            var mismatchLinksOk = MultiplayerMismatchActions.SelfTest();
+            var resolverOk = MismatchModResolver.SelfTest();
+            CompanionLog.Write($"Startup self-tests: mismatchLinks={mismatchLinksOk} resolver={resolverOk}");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Startup self-tests failed: " + ex.Message);
         }
     }
 }
