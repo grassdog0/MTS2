@@ -20,6 +20,7 @@ Expected companion log marker:
 
 ```text
 Initialize ModTheSpire2 0.4.0-clean-restart-ui
+Startup self-tests: mismatchLinks=True resolver=True
 ```
 
 Log file:
@@ -48,7 +49,9 @@ Version : 0.4.0
 1. Start the game from Steam, not by double-clicking `SlayTheSpire2.exe`.
 2. Confirm the game reaches the main menu.
 3. Open `companion.log` and confirm the clean-restart marker appears.
-4. Confirm no `Initialize failed` or `Management dialog failed` line appears after that marker.
+4. Confirm `companion.log` includes `Startup self-tests: mismatchLinks=True resolver=True`.
+5. If either value is `False`, keep the game usable but treat the mismatch helper as needing investigation before release.
+6. Confirm no `Initialize failed` or `Management dialog failed` line appears after that marker.
 
 ## In-Game Management Overlay
 
@@ -118,6 +121,29 @@ Version : 0.4.0
 9. Confirm too-new minimum game version requirements are blocked.
 10. Confirm checked mods with satisfied dependencies show `Ready`.
 11. Confirm unchecked selectable mods show `Available`.
+
+## Better Mod Menu Grouping
+
+This feature is read-only and must not modify Better Mod Menu files.
+
+1. If Better Mod Menu is installed, note the last modified time of its mod data folder before opening ModTheSpire2:
+
+```text
+%APPDATA%\SlayTheSpire2\steam\<steamid>\mod_data\BetterModMenu
+```
+
+2. Open the Windows launcher.
+3. Confirm the launcher has a `Group` column.
+4. If Better Mod Menu `ModGroups` or CSV exports exist, confirm known grouped mods show their imported groups.
+5. If Better Mod Menu data is empty or unavailable, confirm mods still show fallback groups such as:
+   - `Dependencies / libraries`
+   - `Gameplay content`
+   - `UI / QoL`
+   - `Cosmetic`
+   - `Utility / tools`
+   - `Unknown`
+6. Confirm grouping does not change the actual load order unless you explicitly move mods.
+7. If Better Mod Menu is installed, confirm its mod data folder was not modified by opening ModTheSpire2.
 
 ## Load Order And Profiles
 
