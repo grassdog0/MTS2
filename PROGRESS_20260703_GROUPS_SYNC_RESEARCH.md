@@ -166,6 +166,301 @@ Current launcher candidate:
 
 This is a test candidate, not a manually accepted Workshop release yet.
 
+## 2026-07-03 12:05 - Verification Guardrail Realigned
+
+Updated `Tools\VerifyModTheSpire2Package.ps1` so the verifier protects the current goal direction instead of older experimental branches.
+
+Changed verification intent:
+
+- Removed verifier requirements that preserved persistent draggable UI plumbing.
+- Removed verifier requirements that preserved Hot-Apply backup plumbing.
+- Added a guard against source strings that would indicate force-join, mismatch-bypass, or auto-subscribe behavior.
+- Added an explicit guard that the clean restart-manager workflow still exists through `Close and Open Launcher` and command-line forwarding.
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+## 2026-07-03 12:47 - Workshop Link Parsing For Mismatch Reports
+
+Improved the read-only multiplayer mismatch helper's Workshop link parsing.
+
+Behavior:
+
+- `Open Missing Mod Links` now recognizes Steam Workshop links with `id=` after additional query parameters, such as:
+  `https://steamcommunity.com/sharedfiles/filedetails/?foo=bar&id=<id>`
+- It also recognizes Steam URL format:
+  `steam://url/CommunityFilePage/<id>`
+- Links are still normalized to:
+  `https://steamcommunity.com/sharedfiles/filedetails/?id=<id>`
+- Duplicate Workshop ids are still de-duplicated.
+- No force-join, mismatch bypass, auto-subscribe, or network/lobby behavior was added.
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+Current test candidate:
+
+- `ModTheSpire2.dll` SHA256: `0F2527A1DBCEF18B7EF37EAABDA9BD0D77768CF8B22B3CC16F2B25B3256AEB2E`
+- Test package: `dist\TestPackages\ModTheSpire2-0.4.0-workshop-link-parsing-20260703-124742.zip`
+- Test package SHA256: `B78727121A852FDA8498018076FF59A8825B6F9277D3D959883DD4C805D871E2`
+
+This is a test candidate. It has not been uploaded to Workshop.
+
+## 2026-07-03 12:31 - Manual Checklist Label Alignment
+
+Updated `MANUAL_TEST_0.4.0.md` to match the current Windows launcher UI labels:
+
+- `Current Game Settings` -> `Current settings.save`
+- `Save Order` -> `Save`
+- `Save Profile` -> `Save`
+
+This avoids testing against old launcher wording after the profile workflow was simplified to one `Save` action.
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+Local source-export commit:
+
+- `320d1d7 Use current launcher labels in manual test`
+
+GitHub push is pending because `github.com:443` timed out during this attempt. Retry:
+
+```powershell
+cd C:\Users\HZDH\Desktop\tmp\Forimpro\dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+git push origin cross-platform-launcher
+```
+
+## 2026-07-03 12:38 - Manual Label Regression Guard
+
+Added a source-export verifier guard for the manual checklist.
+
+`Tools\VerifyGitHubSourceExport.ps1` now checks:
+
+- `MANUAL_TEST_0.4.0.md` contains the current `Current settings.save` label.
+- `MANUAL_TEST_0.4.0.md` contains the current `Click `Save`` wording.
+- `MANUAL_TEST_0.4.0.md` contains the startup self-test marker.
+- Old launcher labels are rejected:
+  - `Current Game Settings`
+  - `Save Order`
+  - `Save Profile`
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+Local source-export commits now pending push:
+
+- `320d1d7 Use current launcher labels in manual test`
+- `df88c09 Guard manual test launcher labels`
+
+GitHub push is still pending because `github.com:443` timed out / reset during this continuation.
+
+Follow-up retry succeeded. Remote `cross-platform-launcher` was confirmed synced at `df88c09`.
+
+GitHub push later succeeded. Remote `cross-platform-launcher` was confirmed synced; use `git rev-parse --short HEAD` and `git ls-remote origin refs/heads/cross-platform-launcher` for the exact current commit.
+
+## 2026-07-03 11:52 - Workshop Uploaded, GitHub Push Pending
+
+Published the current verified clean package to Steam Workshop item `3747911678`.
+
+Verification before/after upload:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+```
+
+Result: `Status OK`, clean package about `619.17 KB`.
+
+Current published package:
+
+- `ModTheSpire2.dll` SHA256: `76B2B0101518552DDB7950F252B9F7CD38F4C4CB63C4AA389FED49F8932E9522`
+- `ModTheSpire2Launcher.exe` SHA256: `3F9C5809BA2107B8156ADD208EB01F0584E91DA93057DF1951A51507B5C55066`
+- Backup package: `dist\TestPackages\ModTheSpire2-0.4.0-cross-platform-mismatch-20260703-113950.zip`
+- Backup SHA256: `94BE1C14179A713D07217149ED8A95390AECA81B6761234E3F10F62CC116D1B2`
+
+GitHub source export had local commits ready on branch `cross-platform-launcher`, but initial push attempts failed because the connection to `github.com:443` timed out or reset. A later retry succeeded, and remote `cross-platform-launcher` was confirmed synced.
+
+## 2026-07-03 12:11 - Startup Self-Tests For Mismatch Helper
+
+Added lightweight startup self-tests to `ModTheSpire2Companion\ModTheSpire2Entry.HotManage.cs`.
+
+Behavior:
+
+- Runs `MultiplayerMismatchActions.SelfTest()` during initialization.
+- Runs `MismatchModResolver.SelfTest()` during initialization.
+- Writes only to `companion.log`.
+- Does not show player-facing dialogs.
+- Does not block startup if a self-test throws; it logs the failure and keeps the mod usable.
+
+Verifier update:
+
+- `Tools\VerifyModTheSpire2Package.ps1` now requires the startup self-test call and log marker.
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+Current test candidate:
+
+- `ModTheSpire2.dll` SHA256: `6C9E6722892967E44657CCD6EFD2844543BAA96EAE5B8645DEFA990DF01C9C2C`
+- Test package: `dist\TestPackages\ModTheSpire2-0.4.0-startup-selftests-20260703-121108.zip`
+- Test package SHA256: `B3FD3C11931D920EE19DC71826F4DC3B0B35F542ACB4D9B5ED819C2C0FBDCC6A`
+
+This is a test candidate. It has not been uploaded to Workshop.
+
+## 2026-07-03 12:18 - Better Mod Menu Read-Only Guardrail
+
+Strengthened `Tools\VerifyModTheSpire2Package.ps1` for the current grouping direction.
+
+Verifier now checks:
+
+- Launcher source still imports Better Mod Menu groups from `mod_profiles.json`.
+- Launcher source still supports Better Mod Menu CSV exports.
+- Launcher source still applies ModTheSpire2 fallback groups.
+- Diagnostic output still includes group information.
+- Real Better Mod Menu files are not written, deleted, moved, or copied by launcher grouping import.
+- The grouping self-test confines temporary CSV writes to `ModTheSpire2Data`.
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+This was a verifier/source-export change only. No new Workshop package was uploaded.
+
+Local source-export commit:
+
+- `cc9ddd5 Guard Better Mod Menu grouping as read-only`
+
+GitHub push is pending because `github.com:443` timed out / reset during this attempt. Retry:
+
+```powershell
+cd C:\Users\HZDH\Desktop\tmp\Forimpro\dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+git push origin cross-platform-launcher
+```
+
+## 2026-07-03 12:24 - Manual Checklist Updated And GitHub Synced
+
+Updated `MANUAL_TEST_0.4.0.md` to cover the latest invisible stability checks:
+
+- Confirm `companion.log` includes `Startup self-tests: mismatchLinks=True resolver=True`.
+- Confirm Better Mod Menu grouping is read-only.
+- Confirm the launcher shows a `Group` column.
+- Confirm BMM `ModGroups` / CSV exports import when available.
+- Confirm fallback groups appear when BMM data is unavailable.
+- Confirm grouping does not change load order unless the user explicitly moves mods.
+- Confirm Better Mod Menu mod data is not modified by opening ModTheSpire2.
+
+GitHub push later succeeded and included:
+
+- `cc9ddd5 Guard Better Mod Menu grouping as read-only`
+- `d1c9c6e Document grouping and startup self-test checks`
+
+Remote `cross-platform-launcher` was confirmed at `d1c9c6e`.
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+## 2026-07-03 12:45 - Goal Guardrails Updated And GitHub Synced
+
+Retried GitHub push successfully and synced the previous manual checklist/verifier commits.
+
+Updated `GOAL_NEXT_STAGE_GROUPS_AND_MULTIPLAYER_SYNC.md` so the active goal now explicitly preserves:
+
+- Better Mod Menu grouping read-only verification.
+- Fallback groups when BMM data is unavailable.
+- Startup self-test log marker:
+  `Startup self-tests: mismatchLinks=True resolver=True`
+
+GitHub source export:
+
+- Remote `cross-platform-launcher` confirmed at `1752e27`.
+
+Verification:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyModTheSpire2Package.ps1 -SkipLive
+powershell -NoProfile -ExecutionPolicy Bypass -File Tools\VerifyGitHubSourceExport.ps1 -SourceExport dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+```
+
+Results:
+
+- Package verifier: `Status OK`
+- GitHub source export verifier: `Status OK`
+
+Pending local commits should be inspected with:
+
+```powershell
+git status --short --branch
+git log --oneline origin/cross-platform-launcher..HEAD
+```
+
+Retry command:
+
+```powershell
+cd C:\Users\HZDH\Desktop\tmp\Forimpro\dist\Release\ModTheSpire2-0.4.0-CrossPlatform-GitHubSource
+git push origin cross-platform-launcher
+```
+
 ## 2026-07-03 11:42 - Mismatch Report Status In Management
 
 Improved the ModTheSpire2 management dialog so players can see whether a multiplayer mismatch report is available before pressing action buttons.

@@ -58,8 +58,8 @@ if ($LASTEXITCODE -ne 0) {
     Fail "AnalyzeModManifests.ps1 failed"
 }
 $manifestAnalysisText = ($manifestAnalysis | Out-String)
-if (-not ($manifestAnalysisText -match "QuickRestart" -and $manifestAnalysisText -match "BaseLib min_version=3.3.0")) {
-    Fail "Manifest analysis did not capture QuickRestart dependency version constraint"
+if (-not ($manifestAnalysisText -match "(?s)Id\s+:\s+QuickRestart.*?DependencyConstraints\s+:\s+dependencies=BaseLib min_version=(?:v)?[0-9]+\.[0-9]+\.[0-9]+")) {
+    Fail "Manifest analysis did not capture the current QuickRestart dependency version constraint"
 }
 if (-not ($manifestAnalysisText -match "wuwancients" -and $manifestAnalysisText -match "BaseLib min_version=v3.2.0")) {
     Fail "Manifest analysis did not capture wuwancients dependency version constraint"

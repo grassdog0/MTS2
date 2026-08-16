@@ -4,6 +4,17 @@ ModTheSpire2 is a pre-launch mod selector and in-game companion manager for Slay
 
 Current version: `0.4.0`.
 
+## Current Test Build Notes
+
+- Keeps the simple restart-manager workflow: change whole-mod enablement in the launcher, then start the game.
+- Refreshes the in-game `ModTheSpire2 Launcher` button so it stays visible and interactive when other mod-setting UI layers are present.
+- Places the in-game `Launcher` button beside `Installed Mods`, reuses the native `Get Mods` button style, and follows the game's typography and scaling.
+- Improves the management dialog with a readable native-style layout, scroll support, reliable close/cancel behavior, and clearer launch-option text selection.
+- The launcher now uses clearer profile wording: after changing order, choose or type a profile name, then click `Save`.
+- Added a regression check for overlapping mod ids/names, such as a disabled `Hina` entry next to enabled `TenshiHinanawi`, so `settings.save` enabled state must be read by exact id.
+- Adds read-only Better Mod Menu grouping import from `ModGroups` or CSV exports when available.
+- Adds an experimental read-only multiplayer mismatch helper that can record host/local mod mismatch details, show Workshop links when known, and provide Open/Copy report actions.
+
 ## What This Mod Does
 
 - Adds a `ModTheSpire2 Launcher` button under the game's mod settings screen when this mod is enabled.
@@ -20,6 +31,7 @@ Current version: `0.4.0`.
 - Opens the Windows launcher from the current `settings.save` order and enabled state, making it friendlier with other order managers.
 - Supports named launcher order profiles.
 - The in-game `ModTheSpire2 Launcher` button opens the Close and Open Launcher confirmation so players can safely change whole-mod enablement before restart.
+- The in-game management panel can show the latest multiplayer mod mismatch report status, open recorded Workshop links, and copy the report for feedback.
 - Saves ModTheSpire2 state in `ModTheSpire2Data` inside this mod folder.
 - Backs up `settings.save` before writing mod enablement or load-order changes.
 
@@ -126,6 +138,37 @@ ModTheSpire2Data/enabled-mods.txt
 The Linux/macOS scripts can launch Vanilla, the saved enabled-mod list, or a named profile that already exists.
 
 On Windows, choosing a named profile from the launcher profile list applies it immediately. Choose `Current settings.save` to return to the live `settings.save` view.
+
+## Better Mod Menu Grouping
+
+The Windows launcher has a read-only `Group` column.
+
+ModTheSpire2 first tries to read Better Mod Menu group data from the player's Better Mod Menu profile data. If `ModGroups` is empty or unavailable, it can also read Better Mod Menu CSV exports when present. If no Better Mod Menu grouping data is available, ModTheSpire2 falls back to simple built-in categories such as dependencies/libraries, gameplay content, UI/QoL, cosmetic, utility/tools, and unknown.
+
+This is read-only. ModTheSpire2 does not write Better Mod Menu files and does not require Better Mod Menu.
+
+## Multiplayer Mod Mismatch Helper
+
+The multiplayer helper is experimental and read-only.
+
+If Slay the Spire 2 reports a multiplayer `ModMismatch`, ModTheSpire2 attempts to append a help section to the game's existing error text. When the game exposes missing mod details, ModTheSpire2 records:
+
+- mods the host has but the local player is missing;
+- mods the local player has but the host is missing;
+- Workshop links when a missing mod can be matched to local/subscribed metadata.
+
+The latest report is saved at:
+
+```text
+ModTheSpire2Data/multiplayer-mismatch-last.txt
+```
+
+Open `ModTheSpire2 Management` to see whether a report is available. The management panel includes:
+
+- `Open Missing Mod Links`: opens Workshop links recorded in the latest report, up to a safe limit.
+- `Copy Mismatch Report`: copies the full report to the clipboard for feedback.
+
+This helper does not bypass multiplayer checks, does not force join, does not auto-subscribe Workshop items, and does not alter lobby/network state.
 
 Before overwriting `load-order.txt`, `enabled-mods.txt`, or named order profile files, the Windows launcher copies the previous file into:
 

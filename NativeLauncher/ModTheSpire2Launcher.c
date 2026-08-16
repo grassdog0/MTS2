@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include "LauncherServices.h"
 
 #define MAX_MODS 1024
 #define MAX_TEXT 512
@@ -40,6 +41,9 @@ typedef struct ModInfo {
     int orderBeforeCount;
     int depth;
     BOOL affectsGameplay;
+    BOOL affectsGameplayKnown;
+    BOOL hasDllPayload;
+    BOOL hasPckPayload;
 } ModInfo;
 
 static HINSTANCE g_instance;
@@ -64,7 +68,6 @@ static WCHAR g_savedEnabled[MAX_MODS][MAX_TEXT];
 static int g_savedEnabledCount;
 static BOOL g_refreshingProfiles;
 
-static const WCHAR* T(const WCHAR* zh, const WCHAR* en) { (void)zh; return en; }
 static char* ReplaceSpan(char* src, DWORD* size, DWORD start, DWORD oldLen, const char* newText);
 static int GetSelectedListIndex(void);
 static void RebuildListPreservingChecks(int selectedIndex);
@@ -88,6 +91,22 @@ static BOOL FindModListSpan(const char* json, DWORD size, DWORD* start, DWORD* l
 static void SaveNamedProfile(void);
 static int FindUniqueModIndexByName(const WCHAR* name);
 static int FindUniqueModIndexByWorkshopId(const WCHAR* workshopId);
+static int FindModIndexById(const WCHAR* id);
+static void DiscoverRoot(const WCHAR* root, const WCHAR* source);
+static void SortModsByCurrentSettings(void);
+static void SortModsByDependencies(void);
+static BOOL ValidateSelectedDependencyOrder(WCHAR* outMessage, int cap);
+static void WriteSettings(BOOL modded);
+static BOOL StartGame(void);
+static BOOL VersionIsLowerThan(const WCHAR* actual, const WCHAR* required);
+
+static Mts2LauncherServices g_services = {
+    { DiscoverRoot },
+    { SortModsByCurrentSettings, SortModsByDependencies, ValidateSelectedDependencyOrder },
+    { ApplyModGroups },
+    { WriteSettings },
+    { StartGame }
+};
 
 static void DirName(WCHAR* path) {
     WCHAR* slash = wcsrchr(path, L'\\');
@@ -551,6 +570,25 @@ static BOOL FindModListSpan(const char* json, DWORD size, DWORD* start, DWORD* l
     return FALSE;
 }
 
+static BOOL JsonTryBoolValue(const char* json, const char* key, BOOL* outValue) {
+    char pattern[128];
+    snprintf(pattern, sizeof(pattern), "\"%s\"", key);
+    const char* p = strstr(JsonStart(json), pattern);
+    if (!p) return FALSE;
+    p = strchr(p + strlen(pattern), ':');
+    if (!p) return FALSE;
+    p = SkipWs(p + 1);
+    if (strncmp(p, "true", 4) == 0) {
+        if (outValue) *outValue = TRUE;
+        return TRUE;
+    }
+    if (strncmp(p, "false", 5) == 0) {
+        if (outValue) *outValue = FALSE;
+        return TRUE;
+    }
+    return FALSE;
+}
+
 static BOOL JsonObjectIdInDiscoveredMods(const char* objectStart, const char* objectEnd) {
     const char* idKey = strstr(objectStart, "\"id\"");
     if (!idKey || idKey >= objectEnd) return FALSE;
@@ -839,11 +877,6 @@ static void DetectLanguage(void) {
     HeapFree(GetProcessHeap(), 0, json);
 }
 
-static int HasModId(const WCHAR* id) {
-    for (int i = 0; i < g_modCount; ++i) if (_wcsicmp(g_mods[i].id, id) == 0) return 1;
-    return 0;
-}
-
 static BOOL IsManifestCandidateFile(const WCHAR* name) {
     const WCHAR* ext = wcsrchr(name, L'.');
     return ext && (_wcsicmp(ext, L".json") == 0 || _wcsicmp(ext, L".manifest") == 0);
@@ -1009,6 +1042,13 @@ static BOOL DirectoryHasSidecarManifest(const WCHAR* path) {
     return found;
 }
 
+static BOOL ShouldReplaceDiscoveredMod(const ModInfo* existing, const ModInfo* candidate) {
+    if (!existing || !candidate) return FALSE;
+    return _wcsicmp(existing->source, L"Local") == 0 &&
+           _wcsicmp(candidate->source, L"Workshop") == 0 &&
+           VersionIsLowerThan(existing->version, candidate->version);
+}
+
 static void AddModFromJson(const WCHAR* path, const WCHAR* source) {
     if (g_modCount >= MAX_MODS) return;
     DWORD size = 0;
@@ -1023,23 +1063,42 @@ static void AddModFromJson(const WCHAR* path, const WCHAR* source) {
     } else {
         JsonStringValue(json, "pck_name", pckName, _countof(pckName));
     }
-    BOOL declaresPayload = JsonBoolValue(json, "has_dll") || JsonBoolValue(json, "has_pck");
-    if (id[0] && IsPlausibleManifestCandidate(path, id, pckName, declaresPayload) && !HasModId(id)) {
+    BOOL hasDll = JsonBoolValue(json, "has_dll") || JsonBoolValue(json, "hasDll");
+    BOOL hasPck = JsonBoolValue(json, "has_pck") || JsonBoolValue(json, "hasPck");
+    BOOL declaresPayload = hasDll || hasPck;
+    if (id[0] && IsPlausibleManifestCandidate(path, id, pckName, declaresPayload)) {
+        ModInfo* candidate = (ModInfo*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ModInfo));
+        if (!candidate) {
+            HeapFree(GetProcessHeap(), 0, json);
+            return;
+        }
         JsonStringValue(json, "name", name, _countof(name));
         if (!name[0]) wcscpy(name, id);
-        wcscpy(g_mods[g_modCount].id, id);
-        wcscpy(g_mods[g_modCount].name, name);
-        JsonStringValue(json, "version", g_mods[g_modCount].version, _countof(g_mods[g_modCount].version));
-        JsonMinGameVersion(json, g_mods[g_modCount].minGameVersion, _countof(g_mods[g_modCount].minGameVersion));
-        wcscpy(g_mods[g_modCount].source, source);
-        wcsncpy(g_mods[g_modCount].manifest, path, _countof(g_mods[g_modCount].manifest) - 1);
-        ExtractWorkshopIdFromPath(path, g_mods[g_modCount].workshopId, _countof(g_mods[g_modCount].workshopId));
-        JsonDependencyIds(json, g_mods[g_modCount].deps, &g_mods[g_modCount].depCount);
-        JsonDependencyVersionRequirements(json, g_mods[g_modCount].deps, g_mods[g_modCount].depMinVersions, &g_mods[g_modCount].depCount);
-        JsonLoadAfterIds(json, g_mods[g_modCount].orderAfter, &g_mods[g_modCount].orderAfterCount);
-        JsonLoadBeforeIds(json, g_mods[g_modCount].orderBefore, &g_mods[g_modCount].orderBeforeCount);
-        g_mods[g_modCount].affectsGameplay = JsonBoolValue(json, "affects_gameplay");
-        ++g_modCount;
+        wcscpy(candidate->id, id);
+        wcscpy(candidate->name, name);
+        JsonStringValue(json, "version", candidate->version, _countof(candidate->version));
+        JsonMinGameVersion(json, candidate->minGameVersion, _countof(candidate->minGameVersion));
+        wcscpy(candidate->source, source);
+        wcsncpy(candidate->manifest, path, _countof(candidate->manifest) - 1);
+        ExtractWorkshopIdFromPath(path, candidate->workshopId, _countof(candidate->workshopId));
+        JsonDependencyIds(json, candidate->deps, &candidate->depCount);
+        JsonDependencyVersionRequirements(json, candidate->deps, candidate->depMinVersions, &candidate->depCount);
+        JsonLoadAfterIds(json, candidate->orderAfter, &candidate->orderAfterCount);
+        JsonLoadBeforeIds(json, candidate->orderBefore, &candidate->orderBeforeCount);
+        candidate->affectsGameplayKnown =
+            JsonTryBoolValue(json, "affects_gameplay", &candidate->affectsGameplay) ||
+            JsonTryBoolValue(json, "affectsGameplay", &candidate->affectsGameplay);
+        candidate->hasDllPayload = hasDll;
+        candidate->hasPckPayload = hasPck;
+
+        int existing = FindModIndexById(id);
+        if (existing < 0) {
+            g_mods[g_modCount++] = *candidate;
+        } else if (ShouldReplaceDiscoveredMod(&g_mods[existing], candidate)) {
+            AppendLogf(L"Workshop mod supersedes older local mod: %ls local=%ls workshop=%ls", id, g_mods[existing].version, candidate->version);
+            g_mods[existing] = *candidate;
+        }
+        HeapFree(GetProcessHeap(), 0, candidate);
     }
     HeapFree(GetProcessHeap(), 0, json);
 }
@@ -1149,13 +1208,6 @@ static void CanonicalizeDependencyIds(void) {
         CanonicalizeReferenceIds(g_mods[i].orderAfter, g_mods[i].orderAfterCount, L"Load-after", g_mods[i].id);
         CanonicalizeReferenceIds(g_mods[i].orderBefore, g_mods[i].orderBeforeCount, L"Load-before", g_mods[i].id);
     }
-}
-
-static BOOL IdInSavedOrder(const WCHAR* id) {
-    for (int i = 0; i < g_savedOrderCount; ++i) {
-        if (_wcsicmp(g_savedOrder[i], id) == 0) return TRUE;
-    }
-    return FALSE;
 }
 
 static void GetLoadOrderPath(WCHAR* out, int cap) {
@@ -1298,13 +1350,6 @@ static void LoadSavedEnabled(void) {
     }
     HeapFree(GetProcessHeap(), 0, data);
     AppendLogf(L"Loaded saved enabled entries=%d", g_savedEnabledCount);
-}
-
-static BOOL IdInSavedEnabled(const WCHAR* id) {
-    for (int i = 0; i < g_savedEnabledCount; ++i) {
-        if (_wcsicmp(g_savedEnabled[i], id) == 0) return TRUE;
-    }
-    return FALSE;
 }
 
 static BOOL SaveCurrentEnabledToPath(const WCHAR* path) {
@@ -2118,17 +2163,22 @@ static BOOL NameOrIdContains(const ModInfo* mod, const WCHAR* text) {
     return mod && text && text[0] && (wcsstr(mod->id, text) || wcsstr(mod->name, text));
 }
 
+static const WCHAR* ModTypeText(const ModInfo* mod) {
+    if (!mod || !mod->affectsGameplayKnown) return L"Unknown";
+    return mod->affectsGameplay ? L"Gameplay" : L"Utility";
+}
+
 static void ApplyFallbackGroup(ModInfo* mod) {
     if (!mod || mod->group[0]) return;
     if (mod->depCount == 0 && (mod->orderBeforeCount > 0 || NameOrIdContains(mod, L"Lib") || NameOrIdContains(mod, L"lib"))) {
         wcscpy(mod->group, L"Dependencies / libraries");
-    } else if (!mod->affectsGameplay && (NameOrIdContains(mod, L"Menu") || NameOrIdContains(mod, L"Config") || NameOrIdContains(mod, L"Restart") || NameOrIdContains(mod, L"Save") || NameOrIdContains(mod, L"Intent"))) {
+    } else if (mod->affectsGameplayKnown && !mod->affectsGameplay && (NameOrIdContains(mod, L"Menu") || NameOrIdContains(mod, L"Config") || NameOrIdContains(mod, L"Restart") || NameOrIdContains(mod, L"Save") || NameOrIdContains(mod, L"Intent"))) {
         wcscpy(mod->group, L"UI / QoL");
-    } else if (!mod->affectsGameplay && (NameOrIdContains(mod, L"Skin") || NameOrIdContains(mod, L"skin"))) {
+    } else if (mod->affectsGameplayKnown && !mod->affectsGameplay && (NameOrIdContains(mod, L"Skin") || NameOrIdContains(mod, L"skin"))) {
         wcscpy(mod->group, L"Cosmetic");
-    } else if (mod->affectsGameplay) {
+    } else if (mod->affectsGameplayKnown && mod->affectsGameplay) {
         wcscpy(mod->group, L"Gameplay content");
-    } else if (!mod->affectsGameplay) {
+    } else if (mod->affectsGameplayKnown) {
         wcscpy(mod->group, L"Utility / tools");
     } else {
         wcscpy(mod->group, L"Unknown");
@@ -2440,18 +2490,6 @@ static char* ReplaceSpan(char* src, DWORD* size, DWORD start, DWORD oldLen, cons
     return out;
 }
 
-static char* InsertMissingModEntry(char* json, DWORD* size, const WCHAR* id, BOOL on) {
-    char id8[MAX_TEXT * 4];
-    WideToUtf82(id, id8, sizeof(id8));
-    char entry[MAX_TEXT * 4 + 96];
-    snprintf(entry, sizeof(entry), "{\"id\":\"%s\",\"is_enabled\":%s,\"source\":\"mods_directory\"},", id8, on ? "true" : "false");
-    char* p = strstr(json, "\"mod_list\"");
-    if (!p) return json;
-    p = strchr(p, '[');
-    if (!p) return json;
-    return ReplaceSpan(json, size, (DWORD)(p + 1 - json), 0, entry);
-}
-
 static void WriteSettings(BOOL modded) {
     if (!FileExistsW2(g_settingsFile)) {
         MessageBoxW(NULL, L"settings.save was not found. Start the game once first, or check the path.", L"ModTheSpire2", MB_ICONERROR);
@@ -2492,11 +2530,11 @@ static void RefreshList(void) {
     AppendLogf(L"Refresh appDir=%ls", g_appDir);
     AppendLogf(L"Refresh gameDir=%ls", g_gameDir);
     AppendLogf(L"Refresh settings=%ls", g_settingsFile);
-    DiscoverRoot(root, L"Local");
+    g_services.discovery.discoverRoot(root, L"Local");
     FindWorkshopDir(workshop, _countof(workshop));
-    DiscoverRoot(workshop, L"Workshop");
-    SortModsByCurrentSettings();
-    ApplyModGroups();
+    g_services.discovery.discoverRoot(workshop, L"Workshop");
+    g_services.loadOrder.sortForCurrentSettings();
+    g_services.grouping.applyGroups();
     AppendLogf(L"Refresh total mods=%d", g_modCount);
     g_enforcingChecks = TRUE;
     for (int i = 0; i < g_modCount; ++i) {
@@ -2511,7 +2549,7 @@ static void RefreshList(void) {
         ListView_SetItemText(g_list, i, 1, g_mods[i].id);
         ListView_SetItemText(g_list, i, 2, g_mods[i].source);
         WCHAR typeText[32];
-        wcsncpy(typeText, g_mods[i].affectsGameplay ? L"Gameplay" : L"Utility", _countof(typeText) - 1);
+        wcsncpy(typeText, ModTypeText(&g_mods[i]), _countof(typeText) - 1);
         typeText[_countof(typeText) - 1] = 0;
         ListView_SetItemText(g_list, i, 3, typeText);
         WCHAR orderText[32];
@@ -2597,7 +2635,7 @@ static void RebuildListPreservingChecks(int selectedIndex) {
         ListView_InsertItem(g_list, &item);
         ListView_SetItemText(g_list, i, 1, g_mods[i].id);
         ListView_SetItemText(g_list, i, 2, g_mods[i].source);
-        ListView_SetItemText(g_list, i, 3, g_mods[i].affectsGameplay ? L"Gameplay" : L"Utility");
+        ListView_SetItemText(g_list, i, 3, (WCHAR*)ModTypeText(&g_mods[i]));
         WCHAR orderText[32];
         swprintf(orderText, _countof(orderText), L"%d", i + 1);
         ListView_SetItemText(g_list, i, 4, g_mods[i].group);
@@ -3505,7 +3543,7 @@ static void Launch(BOOL modded) {
         }
     }
     WCHAR orderMessage[MAX_TEXT * 2];
-    if (modded && !ValidateSelectedDependencyOrder(orderMessage, _countof(orderMessage))) {
+    if (modded && !g_services.loadOrder.validateSelected(orderMessage, _countof(orderMessage))) {
         MessageBoxW(NULL, orderMessage, L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
         return;
     }
@@ -3513,8 +3551,8 @@ static void Launch(BOOL modded) {
         MessageBoxW(NULL, L"Could not save enabled-mods.txt.", L"ModTheSpire2", MB_ICONERROR);
         return;
     }
-    WriteSettings(modded);
-    if (StartGame()) {
+    g_services.settings.write(modded);
+    if (g_services.launch.startGame()) {
         PostQuitMessage(0);
     } else {
         MessageBoxW(NULL, L"Failed to start the game. Please check launcher.log.", L"ModTheSpire2", MB_ICONERROR);
@@ -3706,10 +3744,10 @@ static int RunDiagnostics(void) {
     AppendLogf(L"Diagnostic localRoot=%ls", localRoot);
     AppendLogf(L"Diagnostic workshopRoot=%ls", workshopRoot);
 
-    DiscoverRoot(localRoot, L"Local");
-    DiscoverRoot(workshopRoot, L"Workshop");
-    SortModsByDependencies();
-    ApplyModGroups();
+    g_services.discovery.discoverRoot(localRoot, L"Local");
+    g_services.discovery.discoverRoot(workshopRoot, L"Workshop");
+    g_services.loadOrder.sortForDiagnostics();
+    g_services.grouping.applyGroups();
 
     AppendLogf(L"Diagnostic total mods=%d", g_modCount);
     for (int i = 0; i < g_modCount && i < 80; ++i) {
@@ -3736,6 +3774,41 @@ static int RunDiagnostics(void) {
     return g_modCount > 0 ? 0 : 2;
 }
 
+static BOOL RunDiscoveryCompatibilitySelfTest(void) {
+    ModInfo* local = (ModInfo*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ModInfo));
+    ModInfo* workshop = (ModInfo*)HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sizeof(ModInfo));
+    if (!local || !workshop) {
+        if (local) HeapFree(GetProcessHeap(), 0, local);
+        if (workshop) HeapFree(GetProcessHeap(), 0, workshop);
+        AppendLog(L"Discovery compatibility self-test failed: out of memory");
+        return FALSE;
+    }
+
+    wcscpy(local->source, L"Local");
+    wcscpy(local->version, L"1.2.0");
+    wcscpy(workshop->source, L"Workshop");
+    wcscpy(workshop->version, L"1.3.0");
+    BOOL newerWorkshopWins = ShouldReplaceDiscoveredMod(local, workshop);
+    wcscpy(workshop->version, L"1.1.9");
+    BOOL olderWorkshopWins = ShouldReplaceDiscoveredMod(local, workshop);
+    BOOL metadataKindsOk =
+        _wcsicmp(ModTypeText(local), L"Unknown") == 0;
+    local->affectsGameplayKnown = TRUE;
+    local->affectsGameplay = FALSE;
+    metadataKindsOk = metadataKindsOk && _wcsicmp(ModTypeText(local), L"Utility") == 0;
+    local->affectsGameplay = TRUE;
+    metadataKindsOk = metadataKindsOk && _wcsicmp(ModTypeText(local), L"Gameplay") == 0;
+
+    HeapFree(GetProcessHeap(), 0, local);
+    HeapFree(GetProcessHeap(), 0, workshop);
+    if (!newerWorkshopWins || olderWorkshopWins || !metadataKindsOk) {
+        AppendLog(L"Discovery compatibility self-test failed: source precedence or affectsGameplay tri-state");
+        return FALSE;
+    }
+    AppendLog(L"Discovery compatibility self-test passed");
+    return TRUE;
+}
+
 static int RunOrderSelfTest(void) {
     g_modCount = 0;
     LoadSavedOrder();
@@ -3744,10 +3817,11 @@ static int RunOrderSelfTest(void) {
     swprintf(localRoot, _countof(localRoot), L"%ls\\mods", g_gameDir);
     FindWorkshopDir(workshopRoot, _countof(workshopRoot));
     AppendLog(L"Order self-test begin");
-    DiscoverRoot(localRoot, L"Local");
-    DiscoverRoot(workshopRoot, L"Workshop");
-    SortModsByDependencies();
-    ApplyModGroups();
+    if (!RunDiscoveryCompatibilitySelfTest()) return 12;
+    g_services.discovery.discoverRoot(localRoot, L"Local");
+    g_services.discovery.discoverRoot(workshopRoot, L"Workshop");
+    g_services.loadOrder.sortForDiagnostics();
+    g_services.grouping.applyGroups();
     AppendLogf(L"Order self-test mods=%d", g_modCount);
     if (g_modCount < 2) {
         AppendLog(L"Order self-test failed: not enough mods");

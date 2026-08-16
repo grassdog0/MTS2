@@ -33,6 +33,7 @@ public static class ModTheSpire2Entry
         try
         {
             CompanionLog.Write("Initialize ModTheSpire2 " + BuildMarker);
+            CompanionLog.Write(CompanionServices.Compatibility.DescribeCapabilities());
             RunStartupSelfTests();
             new Harmony(HarmonyId).PatchAll(Assembly.GetExecutingAssembly());
             ModConfigIntegration.TryRegister();
@@ -127,13 +128,14 @@ internal static class ModdingScreenOpenedPatch
 internal static class ModdingScreenButton
 {
     private const string RestartButtonNodeName = "ModTheSpire2RestartButton";
+    private const string RestartButtonText = "Launcher";
 
     public static void TryAdd(NModdingScreen screen, string source)
     {
         try
         {
             CompanionLog.Write(source);
-            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Button existing)
+            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Control existing)
             {
                 KeepButtonInteractive(existing);
                 CompanionLog.Write("Visible modding screen button refreshed from " + source + " under " + existing.GetParent()?.GetPath());
@@ -148,28 +150,52 @@ internal static class ModdingScreenButton
             {
                 buttonSize = template?.CustomMinimumSize ?? new Vector2(260, 56);
             }
+            buttonSize = new Vector2(
+                Math.Clamp(buttonSize.X, 196, 236),
+                Math.Clamp(buttonSize.Y, 44, 56));
             var parent = screen;
 
-            var restart = new Button
+            Control restart;
+            if (template?.Duplicate(14) is NButton nativeRestart)
             {
-                Name = RestartButtonNodeName,
-                Text = "ModTheSpire2 Launcher",
-                Position = FindButtonPosition(parent),
-                AnchorsPreset = (int)Control.LayoutPreset.TopLeft,
-                CustomMinimumSize = buttonSize,
-                Size = buttonSize,
-                TooltipText = "Open ModTheSpire2 management.",
-                MouseFilter = Control.MouseFilterEnum.Stop,
-                Visible = true,
-                TopLevel = false,
-                ZIndex = 5000
-            };
-            UiStyle.ApplyButton(restart);
-            restart.Pressed += () =>
+                nativeRestart.Name = RestartButtonNodeName;
+                nativeRestart.AnchorsPreset = (int)Control.LayoutPreset.TopLeft;
+                nativeRestart.CustomMinimumSize = buttonSize;
+                nativeRestart.Size = buttonSize;
+                nativeRestart.Position = FindButtonPosition(parent, buttonSize);
+                nativeRestart.TooltipText = "Open ModTheSpire2 management.";
+                nativeRestart.MouseFilter = Control.MouseFilterEnum.Stop;
+                nativeRestart.FocusMode = Control.FocusModeEnum.All;
+                nativeRestart.Visible = true;
+                nativeRestart.TopLevel = false;
+                nativeRestart.ZIndex = 4095;
+                nativeRestart.Released += _ => OpenManagement(screen);
+                restart = nativeRestart;
+                CompanionLog.Write("Using duplicated native Get Mods button visuals: " + template.GetType().FullName);
+            }
+            else
             {
-                CompanionLog.Write("Modding screen launcher clicked");
-                RestartToLauncher.ShowConfirm(screen);
-            };
+                var fallback = new Button
+                {
+                    Name = RestartButtonNodeName,
+                    Text = RestartButtonText,
+                    Position = FindButtonPosition(parent, buttonSize),
+                    AnchorsPreset = (int)Control.LayoutPreset.TopLeft,
+                    CustomMinimumSize = buttonSize,
+                    Size = buttonSize,
+                    TooltipText = "Open ModTheSpire2 management.",
+                    MouseFilter = Control.MouseFilterEnum.Stop,
+                    Visible = true,
+                    TopLevel = false,
+                    ZIndex = 4095
+                };
+                UiStyle.AdoptGameTheme(fallback, template ?? screen);
+                UiStyle.ApplyButton(fallback);
+                fallback.Pressed += () => OpenManagement(screen);
+                restart = fallback;
+                CompanionLog.Write("Native Get Mods button could not be duplicated; using themed fallback");
+            }
+
             parent.AddChild(restart);
             KeepButtonInteractive(restart);
             ScheduleRefresh(screen, source);
@@ -181,16 +207,50 @@ internal static class ModdingScreenButton
         }
     }
 
-    private static void KeepButtonInteractive(Button button)
+    private static void OpenManagement(NModdingScreen screen)
+    {
+        CompanionLog.Write("Modding screen launcher clicked");
+        RestartToLauncher.ShowConfirm(screen);
+    }
+
+    private static void KeepButtonInteractive(Control button)
     {
         button.Visible = true;
-        button.Disabled = false;
+        if (button is Button fallback)
+        {
+            fallback.Disabled = false;
+        }
+        if (button is NClickableControl native)
+        {
+            native.SetEnabled(true);
+        }
         button.MouseFilter = Control.MouseFilterEnum.Stop;
-        button.ZIndex = 5000;
+        button.ZIndex = 4095;
+        SetButtonText(button, RestartButtonText);
         button.Show();
         if (button.GetParent() is Node parent)
         {
+            var buttonSize = button.Size;
+            if (buttonSize.X <= 0 || buttonSize.Y <= 0)
+            {
+                buttonSize = button.CustomMinimumSize;
+            }
+            button.Position = FindButtonPosition(parent, buttonSize);
             parent.MoveChild(button, parent.GetChildCount() - 1);
+        }
+    }
+
+    private static void SetButtonText(Node root, string text)
+    {
+        if (root is Label label)
+        {
+            label.Text = text;
+            return;
+        }
+
+        foreach (var child in root.GetChildren())
+        {
+            SetButtonText(child, text);
         }
     }
 
@@ -216,12 +276,13 @@ internal static class ModdingScreenButton
             {
                 return;
             }
-            await tree.CreateTimer(seconds).ToSignal(tree, SceneTreeTimer.SignalName.Timeout);
+            var timer = tree.CreateTimer(seconds);
+            await tree.ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
             if (!GodotObject.IsInstanceValid(screen))
             {
                 return;
             }
-            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Button button)
+            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Control button)
             {
                 KeepButtonInteractive(button);
                 CompanionLog.Write($"Delayed modding screen button refresh after {seconds:0.00}s from {source}");
@@ -233,7 +294,7 @@ internal static class ModdingScreenButton
         }
     }
 
-    private static Vector2 FindButtonPosition(Node parent)
+    private static Vector2 FindButtonPosition(Node parent, Vector2 buttonSize)
     {
         try
         {
@@ -241,19 +302,16 @@ internal static class ModdingScreenButton
                 parent.FindChild("InstalledModsTitle", recursive: true, owned: false) is Control title)
             {
                 var localTitlePosition = parentControl.GetGlobalTransform().AffineInverse() * title.GlobalPosition;
-                var x = localTitlePosition.X + title.Size.X + 28;
-                if (x < 260)
-                {
-                    x = 260;
-                }
-                return new Vector2(x, localTitlePosition.Y - 8);
+                var x = Math.Max(16, localTitlePosition.X - buttonSize.X - 16);
+                var y = localTitlePosition.Y + Math.Max(0, (title.Size.Y - buttonSize.Y) * 0.5f);
+                return new Vector2(x, y);
             }
         }
         catch
         {
         }
 
-        return new Vector2(330, 16);
+        return new Vector2(24, 16);
     }
 }
 
@@ -652,7 +710,8 @@ internal sealed class MismatchModResolver
     {
         try
         {
-            return new MismatchModResolver(ModScanner.Discover());
+            var gameState = CompanionServices.GameSession.Detect();
+            return new MismatchModResolver(CompanionServices.Mods.Discover(gameState));
         }
         catch (Exception ex)
         {
@@ -1289,6 +1348,7 @@ internal static class RestartToLauncher
             }
 
             owner.AddChild(dialog);
+            UiStyle.AdoptGameTheme(dialog, owner);
             var backstop = new ColorRect
             {
                 Name = "Backstop",
@@ -1364,33 +1424,31 @@ internal static class RestartToLauncher
             {
                 Text = "Close the current game and open the ModTheSpire2 launcher?\n\nThe launcher will appear after the game has fully exited. From there, you can launch vanilla or choose which mods to enable for this session. Current game launch arguments are forwarded to the launcher so renderer flags such as --rendering-driver opengl3 are preserved.\n\nTo show ModTheSpire2 every time you press Play in Steam, set this Steam launch option. Keep %command% exactly as written:",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 130),
+                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 0),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             UiStyle.ApplyMutedLabel(body);
             content.AddChild(body);
 
-            var optionBox = new PanelContainer
-            {
-                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 72),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-            };
-            optionBox.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(new Color(0.09f, 0.065f, 0.045f, 0.96f), new Color(0.36f, 0.245f, 0.13f, 0.9f), 1, 4));
-            var optionLabel = new Label
+            var optionBox = new LineEdit
             {
                 Text = launchOption,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                Editable = false,
+                SelectingEnabled = true,
+                SelectAllOnFocus = true,
+                ContextMenuEnabled = true,
+                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 48),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                TooltipText = "Steam launch option. Click to select and copy the full command."
             };
-            UiStyle.ApplyBaseText(optionLabel);
-            optionBox.AddChild(optionLabel);
+            UiStyle.ApplyTextField(optionBox);
             content.AddChild(optionBox);
 
             var note = new Label
             {
                 Text = "Do not replace or remove %command%. If the game needs extra launch arguments, add them after %command%, for example: --rendering-driver opengl3. Steam Workshop cannot change launch options automatically.",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 58),
+                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 0),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             UiStyle.ApplyMutedLabel(note);
@@ -1424,6 +1482,7 @@ internal static class RestartToLauncher
             cancel.Pressed += () => CloseDialog("cancel");
             buttons.AddChild(cancel);
 
+            UiStyle.ApplyGameTypography(dialog, owner);
             CenterRestartDialog(dialog, panel, scroll, buttons, title, body, optionBox, note);
             dialog.Resized += () => CenterRestartDialog(dialog, panel, scroll, buttons, title, body, optionBox, note);
             dialog.CallDeferred(Control.MethodName.GrabFocus);
@@ -1447,9 +1506,9 @@ internal static class RestartToLauncher
         scroll.CustomMinimumSize = new Vector2(metrics.ContentWidth, metrics.ScrollHeight);
         buttons.CustomMinimumSize = new Vector2(metrics.ContentWidth, metrics.ButtonAreaHeight);
         title.CustomMinimumSize = new Vector2(metrics.ContentWidth, 34);
-        body.CustomMinimumSize = new Vector2(metrics.ContentWidth, 130);
-        optionBox.CustomMinimumSize = new Vector2(metrics.ContentWidth, 72);
-        note.CustomMinimumSize = new Vector2(metrics.ContentWidth, 34);
+        body.CustomMinimumSize = new Vector2(metrics.ContentWidth, 0);
+        optionBox.CustomMinimumSize = new Vector2(metrics.ContentWidth, 48);
+        note.CustomMinimumSize = new Vector2(metrics.ContentWidth, 0);
         panel.Position = new Vector2(
             Math.Max(8, (size.X - metrics.PanelSize.X) * 0.5f),
             Math.Max(8, (size.Y - metrics.PanelSize.Y) * 0.5f));
@@ -1580,8 +1639,8 @@ internal static class ModManagementDialog
                 return;
             }
 
-            var gameState = GameSessionState.Detect();
-            var mods = ModScanner.Discover(gameState);
+            var gameState = CompanionServices.GameSession.Detect();
+            var mods = CompanionServices.Mods.Discover(gameState);
             var enabledMods = mods
                 .Where(m => m.IsEnabled)
                 .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
@@ -1599,7 +1658,7 @@ internal static class ModManagementDialog
                 Name = "ModTheSpire2ManagementDialog",
                 AnchorsPreset = (int)Control.LayoutPreset.FullRect,
                 MouseFilter = Control.MouseFilterEnum.Stop,
-                ZIndex = 5000
+                ZIndex = 4095
             };
             void CloseDialog(string reason)
             {
@@ -1608,6 +1667,7 @@ internal static class ModManagementDialog
             }
 
             owner.AddChild(dialog);
+            UiStyle.AdoptGameTheme(dialog, owner);
             var metrics = UiMetrics.From(dialog.GetViewportRect().Size);
 
             var backstop = new ColorRect
@@ -1689,7 +1749,8 @@ internal static class ModManagementDialog
             {
                 Text = "Whole-mod enablement is managed before startup. To change enabled mods, close this game and reopen the ModTheSpire2 launcher, then start the game again with the selected profile.",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(metrics.ContentWidth, 42)
+                CustomMinimumSize = new Vector2(metrics.ContentWidth, 0),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             UiStyle.ApplyMutedLabel(intro);
             root.AddChild(intro);
@@ -1711,8 +1772,7 @@ internal static class ModManagementDialog
 
             var lists = new VBoxContainer
             {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                Theme = new Theme()
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             scroll.AddChild(lists);
 
@@ -1772,6 +1832,7 @@ internal static class ModManagementDialog
             close.Pressed += () => CloseDialog("button");
             buttons.AddChild(close);
 
+            UiStyle.ApplyGameTypography(dialog, owner);
             dialog.Resized += () =>
             {
                 var updated = UiMetrics.From(dialog.GetViewportRect().Size);
@@ -1781,7 +1842,7 @@ internal static class ModManagementDialog
                 buttons.CustomMinimumSize = new Vector2(updated.ContentWidth, updated.ButtonAreaHeight);
                 header.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
                 title.CustomMinimumSize = new Vector2(Math.Max(180, updated.ContentWidth - 244), 34);
-                intro.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
+                intro.CustomMinimumSize = new Vector2(updated.ContentWidth, 0);
                 stateSummaryPanel.CustomMinimumSize = new Vector2(updated.ContentWidth, stateSummaryPanel.CustomMinimumSize.Y);
                 mismatchReportPanel.CustomMinimumSize = new Vector2(updated.ContentWidth, mismatchReportPanel.CustomMinimumSize.Y);
                 PositionPanel(dialog, panel);
@@ -1801,7 +1862,7 @@ internal static class ModManagementDialog
     {
         var container = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 38),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         container.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(SectionColor, UiStyle.AccentColor, 1, 5));
@@ -1809,7 +1870,7 @@ internal static class ModManagementDialog
         {
             Text = text,
             VerticalAlignment = VerticalAlignment.Center,
-            CustomMinimumSize = new Vector2(0, 34),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         UiStyle.ApplyHeaderLabel(label);
@@ -1842,7 +1903,7 @@ internal static class ModManagementDialog
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(contentWidth, 92),
+            CustomMinimumSize = new Vector2(contentWidth, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         var border = gameState.IsSafeMainMenuWithoutRun
@@ -1895,7 +1956,7 @@ internal static class ModManagementDialog
         var status = MultiplayerMismatchActions.GetLastReportStatus();
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(contentWidth, 58),
+            CustomMinimumSize = new Vector2(contentWidth, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         var border = status.Exists ? UiStyle.AccentColor : UiStyle.MutedTextColor;
@@ -1908,7 +1969,7 @@ internal static class ModManagementDialog
         {
             Text = text,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(contentWidth - 18, 52),
+            CustomMinimumSize = new Vector2(contentWidth - 18, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         UiStyle.ApplyMutedLabel(label);
@@ -2098,7 +2159,7 @@ internal static class ModManagementDialog
         {
             Text = text,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(0, 32),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         UiStyle.ApplyMutedLabel(label);
@@ -2109,7 +2170,7 @@ internal static class ModManagementDialog
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 42),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(alternate ? RowAltColor : RowColor, new Color(0.36f, 0.245f, 0.13f, 0.8f), 1, 4));
@@ -2141,7 +2202,7 @@ internal static class ModManagementDialog
     private static void AddLoadOrderSectionCore(VBoxContainer parent, ModScanner.ModSummary[] mods)
     {
         AddSectionHeader(parent, "Load Order");
-        var order = LoadOrderManager.CreateInitialOrder(mods);
+        var order = CompanionServices.LoadOrder.CreateInitialOrder(mods);
         var list = new ItemList
         {
             CustomMinimumSize = new Vector2(0, 190),
@@ -2155,7 +2216,7 @@ internal static class ModManagementDialog
         {
             Text = order.Count == 0 ? "No enabled mods to order." : "Enabled mods are shown in the order ModTheSpire2 will save for the launcher.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(0, 34),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         UiStyle.ApplyMutedLabel(status);
@@ -2194,7 +2255,7 @@ internal static class ModManagementDialog
         up.Pressed += () =>
         {
             var index = SelectedIndex();
-            if (LoadOrderManager.TryMove(order, index, -1, out var message))
+            if (CompanionServices.LoadOrder.TryMove(order, index, -1, out var message))
             {
                 RefreshOrderList(index - 1);
             }
@@ -2206,7 +2267,7 @@ internal static class ModManagementDialog
         down.Pressed += () =>
         {
             var index = SelectedIndex();
-            if (LoadOrderManager.TryMove(order, index, 1, out var message))
+            if (CompanionServices.LoadOrder.TryMove(order, index, 1, out var message))
             {
                 RefreshOrderList(index + 1);
             }
@@ -2217,16 +2278,16 @@ internal static class ModManagementDialog
         var save = CreateActionButton("Save Order");
         save.Pressed += () =>
         {
-            status.Text = LoadOrderManager.Save(order);
+            status.Text = CompanionServices.LoadOrder.Save(order);
         };
         row.AddChild(save);
 
         var reset = CreateActionButton("Reset Order");
         reset.Pressed += () =>
         {
-            status.Text = LoadOrderManager.Reset();
+            status.Text = CompanionServices.LoadOrder.Reset();
             order.Clear();
-            order.AddRange(LoadOrderManager.CreateDefaultOrder(mods));
+            order.AddRange(CompanionServices.LoadOrder.CreateDefaultOrder(mods));
             RefreshOrderList(order.Count > 0 ? 0 : -1);
         };
         row.AddChild(reset);
@@ -2294,14 +2355,11 @@ internal static class ModManagementDialog
 internal static class UiStyle
 {
     public static readonly Color PanelBorderColor = new(0.68f, 0.47f, 0.23f, 1f);
-    public static readonly Color TextColor = new(0.93f, 0.86f, 0.72f, 1f);
-    public static readonly Color MutedTextColor = new(0.76f, 0.67f, 0.52f, 1f);
+    public static readonly Color TextColor = new(0.97f, 0.94f, 0.86f, 1f);
+    public static readonly Color MutedTextColor = new(0.84f, 0.78f, 0.67f, 1f);
     public static readonly Color AccentColor = new(0.84f, 0.58f, 0.27f, 1f);
     public static readonly Color WarningColor = new(0.96f, 0.72f, 0.32f, 1f);
     public static readonly Color SuccessColor = new(0.63f, 0.82f, 0.49f, 1f);
-    private static readonly Color ButtonColor = new(0.31f, 0.21f, 0.115f, 1f);
-    private static readonly Color ButtonHoverColor = new(0.42f, 0.28f, 0.14f, 1f);
-    private static readonly Color ButtonPressedColor = new(0.22f, 0.145f, 0.082f, 1f);
 
     public static StyleBoxFlat CreatePanelStyle(Color background, Color border, int borderWidth, int radius) =>
         new()
@@ -2316,10 +2374,10 @@ internal static class UiStyle
             CornerRadiusTopRight = radius,
             CornerRadiusBottomLeft = radius,
             CornerRadiusBottomRight = radius,
-            ContentMarginLeft = 18,
-            ContentMarginTop = 18,
-            ContentMarginRight = 18,
-            ContentMarginBottom = 18
+            ContentMarginLeft = 12,
+            ContentMarginTop = 8,
+            ContentMarginRight = 12,
+            ContentMarginBottom = 8
         };
 
     public static StyleBoxFlat CreateCompactStyle(Color background, Color border, int borderWidth, int radius) =>
@@ -2348,6 +2406,27 @@ internal static class UiStyle
         control.AddThemeColorOverride("font_hover_color", TextColor);
     }
 
+    public static void AdoptGameTheme(Control target, Node context)
+    {
+        for (var current = context; current is not null; current = current.GetParent())
+        {
+            if (current is Control { Theme: not null } themed)
+            {
+                target.Theme = themed.Theme;
+                return;
+            }
+        }
+    }
+
+    public static void AdoptGameTheme(Control target, Control template)
+    {
+        if (template.Theme is not null)
+        {
+            target.Theme = template.Theme;
+        }
+        target.ThemeTypeVariation = template.ThemeTypeVariation;
+    }
+
     public static void ApplyMutedLabel(Label label)
     {
         label.AddThemeColorOverride("font_color", MutedTextColor);
@@ -2367,17 +2446,140 @@ internal static class UiStyle
         label.AddThemeColorOverride("font_shadow_color", new Color(0.02f, 0.015f, 0.01f, 1f));
         label.AddThemeConstantOverride("shadow_offset_x", 1);
         label.AddThemeConstantOverride("shadow_offset_y", 2);
+        label.AddThemeFontSizeOverride("font_size", 20);
+    }
+
+    public static void ApplyGameTypography(Control root, Node context)
+    {
+        try
+        {
+            var source = FindFontSource(context, root);
+            var font = source?.GetThemeFont("font");
+            if (font is null)
+            {
+                CompanionLog.Write("Native UI font source was not found; retaining inherited theme font");
+                return;
+            }
+
+            ApplyFontRecursive(root, font);
+            CompanionLog.Write("Applied native UI font from " + source!.GetPath());
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Native UI font adoption failed: " + ex.Message);
+        }
+    }
+
+    private static Label? FindFontSource(Node context, Node excludedRoot)
+    {
+        for (var scope = context; scope is not null; scope = scope.GetParent())
+        {
+            if (scope.FindChild("InstalledModsTitle", recursive: true, owned: false) is Label preferred &&
+                !IsWithin(preferred, excludedRoot))
+            {
+                return preferred;
+            }
+        }
+
+        for (var scope = context; scope is not null; scope = scope.GetParent())
+        {
+            var source = FindFirstLabel(scope, excludedRoot);
+            if (source is not null)
+            {
+                return source;
+            }
+        }
+
+        return null;
+    }
+
+    private static Label? FindFirstLabel(Node node, Node excludedRoot)
+    {
+        if (ReferenceEquals(node, excludedRoot))
+        {
+            return null;
+        }
+        if (node is Label label && label.Visible)
+        {
+            return label;
+        }
+        foreach (var child in node.GetChildren())
+        {
+            var found = FindFirstLabel(child, excludedRoot);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private static bool IsWithin(Node node, Node possibleAncestor)
+    {
+        for (var current = node; current is not null; current = current.GetParent())
+        {
+            if (ReferenceEquals(current, possibleAncestor))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void ApplyFontRecursive(Node node, Font font)
+    {
+        if (node is Label or Button or LineEdit or TextEdit or ItemList or RichTextLabel)
+        {
+            ((Control)node).AddThemeFontOverride("font", font);
+        }
+        if (node is RichTextLabel richText)
+        {
+            richText.AddThemeFontOverride("normal_font", font);
+            richText.AddThemeFontOverride("bold_font", font);
+        }
+        foreach (var child in node.GetChildren())
+        {
+            ApplyFontRecursive(child, font);
+        }
     }
 
     public static void ApplyButton(Button button)
     {
-        button.AddThemeStyleboxOverride("normal", CreatePanelStyle(ButtonColor, AccentColor, 1, 4));
-        button.AddThemeStyleboxOverride("hover", CreatePanelStyle(ButtonHoverColor, AccentColor, 1, 4));
-        button.AddThemeStyleboxOverride("pressed", CreatePanelStyle(ButtonPressedColor, AccentColor, 1, 4));
+        button.FocusMode = Control.FocusModeEnum.All;
         button.AddThemeColorOverride("font_color", TextColor);
         button.AddThemeColorOverride("font_hover_color", TextColor);
-        button.AddThemeColorOverride("font_pressed_color", AccentColor);
+        button.AddThemeColorOverride("font_pressed_color", TextColor);
         button.AddThemeColorOverride("font_focus_color", TextColor);
+        button.AddThemeStyleboxOverride("normal", CreateCompactStyle(
+            new Color(0.075f, 0.14f, 0.15f, 0.98f),
+            new Color(0.28f, 0.53f, 0.56f, 1f), 1, 4));
+        button.AddThemeStyleboxOverride("hover", CreateCompactStyle(
+            new Color(0.11f, 0.23f, 0.24f, 0.98f),
+            new Color(0.45f, 0.76f, 0.78f, 1f), 2, 4));
+        button.AddThemeStyleboxOverride("pressed", CreateCompactStyle(
+            new Color(0.055f, 0.105f, 0.115f, 0.98f),
+            AccentColor, 2, 4));
+        button.AddThemeStyleboxOverride("focus", CreateCompactStyle(
+            new Color(0.085f, 0.17f, 0.18f, 0.98f),
+            AccentColor, 2, 4));
+    }
+
+    public static void ApplyTextField(LineEdit field)
+    {
+        field.FocusMode = Control.FocusModeEnum.All;
+        field.AddThemeColorOverride("font_color", TextColor);
+        field.AddThemeColorOverride("font_uneditable_color", TextColor);
+        field.AddThemeColorOverride("font_selected_color", new Color(0.12f, 0.08f, 0.04f, 1f));
+        field.AddThemeColorOverride("selection_color", AccentColor);
+        field.AddThemeStyleboxOverride("normal", CreateCompactStyle(
+            new Color(0.055f, 0.04f, 0.03f, 0.98f),
+            PanelBorderColor, 1, 4));
+        field.AddThemeStyleboxOverride("read_only", CreateCompactStyle(
+            new Color(0.055f, 0.04f, 0.03f, 0.98f),
+            PanelBorderColor, 1, 4));
+        field.AddThemeStyleboxOverride("focus", CreateCompactStyle(
+            new Color(0.07f, 0.05f, 0.035f, 0.98f),
+            AccentColor, 2, 4));
     }
 
     public static Button CreateButton(string text, float width, float height)
@@ -2407,10 +2609,7 @@ internal static class UiStyle
 
     public static void ApplyItemList(ItemList list)
     {
-        list.AddThemeStyleboxOverride("panel", CreatePanelStyle(new Color(0.11f, 0.075f, 0.048f, 0.96f), new Color(0.36f, 0.245f, 0.13f, 0.9f), 1, 4));
-        list.AddThemeStyleboxOverride("selected", CreatePanelStyle(new Color(0.35f, 0.235f, 0.12f, 0.96f), AccentColor, 1, 3));
-        list.AddThemeColorOverride("font_color", TextColor);
-        list.AddThemeColorOverride("font_selected_color", TextColor);
+        list.FocusMode = Control.FocusModeEnum.All;
     }
 }
 
@@ -3048,29 +3247,23 @@ internal static class ModScanner
 
     private static System.Collections.Generic.HashSet<string> ReadRuntimeLoadedModHints()
     {
-        var loaded = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "ModTheSpire2"
-        };
-
         try
         {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var name = assembly.GetName().Name;
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    loaded.Add(name);
-                }
-            }
-            CompanionLog.Write("Runtime loaded assembly hints=" + loaded.Count);
+            var snapshot = CompanionServices.RuntimeMods.Capture();
+            var loaded = new System.Collections.Generic.HashSet<string>(snapshot.LoadedAssemblyNames, StringComparer.OrdinalIgnoreCase);
+            loaded.UnionWith(snapshot.LoadedModIds);
+            CompanionLog.Write(
+                "Runtime loaded hints=" + loaded.Count +
+                " modIds=" + snapshot.LoadedModIds.Count +
+                " multiAssemblyMods=" + snapshot.AssemblyCounts.Count(pair => pair.Value > 1) +
+                " officialMap=" + snapshot.UsedOfficialAssemblyMap);
+            return loaded;
         }
         catch (Exception ex)
         {
             CompanionLog.Write("Read runtime loaded hints failed: " + ex.Message);
+            return new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ModTheSpire2" };
         }
-
-        return loaded;
     }
 
     private static string[] GetDependencies(JsonElement root)
@@ -3958,7 +4151,7 @@ internal static class HotApplyService
             {
                 var enabledHotIds = ResolveHotDependencies(selectedCandidates, allHotCandidates);
                 var allHotIds = allHotCandidates.Select(m => m.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var stateBlock = FindStateSafetyBlock(modList, allHotCandidates, enabledHotIds, GameSessionState.Detect());
+                var stateBlock = FindStateSafetyBlock(modList, allHotCandidates, enabledHotIds, CompanionServices.GameSession.Detect());
                 if (stateBlock is not null)
                 {
                     NativeMessageBox.Show(
@@ -4468,30 +4661,19 @@ internal static class LoadOrderManager
 
 internal static class LauncherActions
 {
-    public static string GetModDir() => Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
+    public static string GetModDir() => CompanionServices.Paths.ModDirectory;
 
-    public static string GetLauncherPath() => Path.Combine(GetModDir(), "ModTheSpire2Launcher.exe");
+    public static string GetLauncherPath() => CompanionServices.Paths.LauncherPath;
 
-    public static string GetLaunchOption() => $"\"{GetLauncherPath()}\" -- %command%";
+    public static string GetLaunchOption() => CompanionServices.Launcher.LaunchOption;
 
     public static void OpenLauncher()
     {
-        var modDir = GetModDir();
-        var launcher = GetLauncherPath();
-        var readme = Path.Combine(modDir, "README.md");
-        var target = File.Exists(launcher) ? launcher : readme;
-        if (!File.Exists(target))
+        if (!CompanionServices.Launcher.TryOpen(out var error))
         {
-            NativeMessageBox.Show("ModTheSpire2Launcher.exe was not found. Please check that the mod files are complete.", "ModTheSpire2");
-            return;
+            CompanionLog.Write("Open launcher failed: " + error);
+            NativeMessageBox.Show(error, "ModTheSpire2");
         }
-
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = target,
-            WorkingDirectory = modDir,
-            UseShellExecute = true
-        });
     }
 }
 
@@ -4926,24 +5108,5 @@ internal static class NativeMessageBox
 
 internal static class CompanionLog
 {
-    public static void Write(string message)
-    {
-        try
-        {
-            var modDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            if (string.IsNullOrWhiteSpace(modDir))
-            {
-                return;
-            }
-
-            var dataDir = Path.Combine(modDir, "ModTheSpire2Data");
-            Directory.CreateDirectory(dataDir);
-            File.AppendAllText(
-                Path.Combine(dataDir, "companion.log"),
-                DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + message + "\n");
-        }
-        catch
-        {
-        }
-    }
+    public static void Write(string message) => CompanionServices.Log.Write(message);
 }
