@@ -58,6 +58,8 @@ $required = @(
     "dist\WorkshopUpload\ModTheSpire2Content-Clean\ModTheSpire2.json",
     "dist\WorkshopUpload\ModTheSpire2Content-Clean\ModTheSpire2.pck",
     "dist\WorkshopUpload\ModTheSpire2Content-Clean\ModTheSpire2Launcher.exe",
+    "dist\WorkshopUpload\ModTheSpire2Content-Clean\ModTheSpire2Launcher.sh",
+    "dist\WorkshopUpload\ModTheSpire2Content-Clean\ModTheSpire2Launcher.command",
     "dist\WorkshopUpload\ModTheSpire2Content-Clean\README.md"
 )
 
@@ -73,6 +75,8 @@ $expectedUploadFiles = @(
     "ModTheSpire2.json",
     "ModTheSpire2.pck",
     "ModTheSpire2Launcher.exe",
+    "ModTheSpire2Launcher.sh",
+    "ModTheSpire2Launcher.command",
     "README.md"
 ) | Sort-Object
 $actualUploadFiles = Get-ChildItem -LiteralPath $uploadDir -File | Select-Object -ExpandProperty Name | Sort-Object
@@ -91,6 +95,14 @@ if (-not $readme.Contains("Clean in-game restart helper")) {
 }
 if ($readme.Contains("Conservative Hot-Apply") -or $readme.Contains("State-aware Hot-Apply")) {
     Fail "README still advertises Hot-Apply as a current player-facing workflow"
+}
+
+$manualTest = Get-Content -LiteralPath (Join-Path $source "MANUAL_TEST_0.4.0.md") -Raw
+if (-not ($manualTest.Contains("Current settings.save") -and $manualTest.Contains("Click ``Save``") -and $manualTest.Contains("Startup self-tests: mismatchLinks=True resolver=True"))) {
+    Fail "Manual test checklist no longer uses current launcher labels or startup self-test marker"
+}
+if ($manualTest.Contains("Current Game Settings") -or $manualTest.Contains("Save Order") -or $manualTest.Contains("Save Profile")) {
+    Fail "Manual test checklist still contains old launcher labels"
 }
 
 $sourceFiles = Get-ChildItem -LiteralPath $source -Recurse -File -Force | Where-Object {

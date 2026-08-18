@@ -33,6 +33,8 @@ public static class ModTheSpire2Entry
         try
         {
             CompanionLog.Write("Initialize ModTheSpire2 " + BuildMarker);
+            CompanionLog.Write(CompanionServices.Compatibility.DescribeCapabilities());
+            RunStartupSelfTests();
             new Harmony(HarmonyId).PatchAll(Assembly.GetExecutingAssembly());
             ModConfigIntegration.TryRegister();
             CompanionLog.Write("PatchAll complete");
@@ -40,6 +42,20 @@ public static class ModTheSpire2Entry
         catch (Exception ex)
         {
             CompanionLog.Write("Initialize failed: " + ex);
+        }
+    }
+
+    private static void RunStartupSelfTests()
+    {
+        try
+        {
+            var mismatchLinksOk = MultiplayerMismatchActions.SelfTest();
+            var resolverOk = MismatchModResolver.SelfTest();
+            CompanionLog.Write($"Startup self-tests: mismatchLinks={mismatchLinksOk} resolver={resolverOk}");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Startup self-tests failed: " + ex.Message);
         }
     }
 }
@@ -112,39 +128,78 @@ internal static class ModdingScreenOpenedPatch
 internal static class ModdingScreenButton
 {
     private const string RestartButtonNodeName = "ModTheSpire2RestartButton";
+    private const string RestartButtonText = "Launcher";
 
     public static void TryAdd(NModdingScreen screen, string source)
     {
         try
         {
             CompanionLog.Write(source);
-            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is not null)
+            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Control existing)
             {
+                KeepButtonInteractive(existing);
+                CompanionLog.Write("Visible modding screen button refreshed from " + source + " under " + existing.GetParent()?.GetPath());
                 return;
             }
 
-            var parent = screen.FindChild("ModsBorder", recursive: true, owned: false) as Control ?? screen;
-            var template = parent.FindChild("GetModsButton", recursive: true, owned: false) as Control;
-            var restart = new Button
+            var modsBorder = screen.FindChild("ModsBorder", recursive: true, owned: false) as Control;
+            var template = modsBorder?.FindChild("GetModsButton", recursive: true, owned: false) as Control
+                ?? screen.FindChild("GetModsButton", recursive: true, owned: false) as Control;
+            var buttonSize = template?.Size ?? new Vector2(260, 48);
+            if (buttonSize.X <= 0 || buttonSize.Y <= 0)
             {
-                Name = RestartButtonNodeName,
-                Text = "ModTheSpire2 Launcher",
-                CustomMinimumSize = template?.CustomMinimumSize ?? new Vector2(260, 56),
-                Size = template?.Size ?? new Vector2(260, 48),
-                Position = FindButtonPosition(parent),
-                AnchorsPreset = (int)Control.LayoutPreset.TopLeft,
-                TooltipText = "ModTheSpire2 Launcher",
-                MouseFilter = Control.MouseFilterEnum.Stop,
-                Visible = true,
-                TopLevel = false,
-                ZIndex = 100
-            };
-            UiStyle.ApplyButton(restart);
-            restart.Pressed += () => ModManagementDialog.Show(screen);
+                buttonSize = template?.CustomMinimumSize ?? new Vector2(260, 56);
+            }
+            buttonSize = new Vector2(
+                Math.Clamp(buttonSize.X, 196, 236),
+                Math.Clamp(buttonSize.Y, 44, 56));
+            var parent = screen;
+
+            Control restart;
+            if (template?.Duplicate(14) is NButton nativeRestart)
+            {
+                nativeRestart.Name = RestartButtonNodeName;
+                nativeRestart.AnchorsPreset = (int)Control.LayoutPreset.TopLeft;
+                nativeRestart.CustomMinimumSize = buttonSize;
+                nativeRestart.Size = buttonSize;
+                nativeRestart.Position = FindButtonPosition(parent, buttonSize);
+                nativeRestart.TooltipText = "Open ModTheSpire2 management.";
+                nativeRestart.MouseFilter = Control.MouseFilterEnum.Stop;
+                nativeRestart.FocusMode = Control.FocusModeEnum.All;
+                nativeRestart.Visible = true;
+                nativeRestart.TopLevel = false;
+                nativeRestart.ZIndex = 4095;
+                nativeRestart.Released += _ => OpenManagement(screen);
+                restart = nativeRestart;
+                CompanionLog.Write("Using duplicated native Get Mods button visuals: " + template.GetType().FullName);
+            }
+            else
+            {
+                var fallback = new Button
+                {
+                    Name = RestartButtonNodeName,
+                    Text = RestartButtonText,
+                    Position = FindButtonPosition(parent, buttonSize),
+                    AnchorsPreset = (int)Control.LayoutPreset.TopLeft,
+                    CustomMinimumSize = buttonSize,
+                    Size = buttonSize,
+                    TooltipText = "Open ModTheSpire2 management.",
+                    MouseFilter = Control.MouseFilterEnum.Stop,
+                    Visible = true,
+                    TopLevel = false,
+                    ZIndex = 4095
+                };
+                UiStyle.AdoptGameTheme(fallback, template ?? screen);
+                UiStyle.ApplyButton(fallback);
+                fallback.Pressed += () => OpenManagement(screen);
+                restart = fallback;
+                CompanionLog.Write("Native Get Mods button could not be duplicated; using themed fallback");
+            }
+
             parent.AddChild(restart);
-            parent.MoveChild(restart, parent.GetChildCount() - 1);
-            restart.Show();
-            CompanionLog.Write("Visible fixed modding screen button added from " + source);
+            KeepButtonInteractive(restart);
+            ScheduleRefresh(screen, source);
+            CompanionLog.Write("Visible modding screen button added from " + source + " under " + parent.GetPath());
         }
         catch (Exception ex)
         {
@@ -152,25 +207,1100 @@ internal static class ModdingScreenButton
         }
     }
 
-    private static Vector2 FindButtonPosition(Node parent)
+    private static void OpenManagement(NModdingScreen screen)
+    {
+        CompanionLog.Write("Modding screen launcher clicked");
+        RestartToLauncher.ShowConfirm(screen);
+    }
+
+    private static void KeepButtonInteractive(Control button)
+    {
+        button.Visible = true;
+        if (button is Button fallback)
+        {
+            fallback.Disabled = false;
+        }
+        if (button is NClickableControl native)
+        {
+            native.SetEnabled(true);
+        }
+        button.MouseFilter = Control.MouseFilterEnum.Stop;
+        button.ZIndex = 4095;
+        SetButtonText(button, RestartButtonText);
+        button.Show();
+        if (button.GetParent() is Node parent)
+        {
+            var buttonSize = button.Size;
+            if (buttonSize.X <= 0 || buttonSize.Y <= 0)
+            {
+                buttonSize = button.CustomMinimumSize;
+            }
+            button.Position = FindButtonPosition(parent, buttonSize);
+            parent.MoveChild(button, parent.GetChildCount() - 1);
+        }
+    }
+
+    private static void SetButtonText(Node root, string text)
+    {
+        if (root is Label label)
+        {
+            label.Text = text;
+            return;
+        }
+
+        foreach (var child in root.GetChildren())
+        {
+            SetButtonText(child, text);
+        }
+    }
+
+    private static void ScheduleRefresh(NModdingScreen screen, string source)
     {
         try
         {
-            if (parent.FindChild("InstalledModsTitle", recursive: true, owned: false) is Control title)
+            RefreshAfterDelay(screen, source, 0.05);
+            RefreshAfterDelay(screen, source, 0.15);
+            RefreshAfterDelay(screen, source, 0.35);
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Modding screen button delayed refresh scheduling failed: " + ex.Message);
+        }
+    }
+
+    private static async void RefreshAfterDelay(NModdingScreen screen, string source, double seconds)
+    {
+        try
+        {
+            if (Engine.GetMainLoop() is not SceneTree tree)
             {
-                var x = title.Position.X + title.Size.X + 28;
-                if (x < 260)
-                {
-                    x = 260;
-                }
-                return new Vector2(x, title.Position.Y - 8);
+                return;
+            }
+            var timer = tree.CreateTimer(seconds);
+            await tree.ToSignal(timer, SceneTreeTimer.SignalName.Timeout);
+            if (!GodotObject.IsInstanceValid(screen))
+            {
+                return;
+            }
+            if (screen.FindChild(RestartButtonNodeName, recursive: true, owned: false) is Control button)
+            {
+                KeepButtonInteractive(button);
+                CompanionLog.Write($"Delayed modding screen button refresh after {seconds:0.00}s from {source}");
+            }
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Modding screen button delayed refresh failed: " + ex.Message);
+        }
+    }
+
+    private static Vector2 FindButtonPosition(Node parent, Vector2 buttonSize)
+    {
+        try
+        {
+            if (parent is Control parentControl &&
+                parent.FindChild("InstalledModsTitle", recursive: true, owned: false) is Control title)
+            {
+                var localTitlePosition = parentControl.GetGlobalTransform().AffineInverse() * title.GlobalPosition;
+                var x = Math.Max(16, localTitlePosition.X - buttonSize.X - 16);
+                var y = localTitlePosition.Y + Math.Max(0, (title.Size.Y - buttonSize.Y) * 0.5f);
+                return new Vector2(x, y);
             }
         }
         catch
         {
         }
 
-        return new Vector2(330, 16);
+        return new Vector2(24, 16);
+    }
+}
+
+[HarmonyPatch]
+internal static class MultiplayerMismatchErrorPatch
+{
+    public static bool Prepare()
+    {
+        return TargetMethod() is not null;
+    }
+
+    public static MethodBase? TargetMethod()
+    {
+        return AccessTools.TypeByName("MegaCrit.Sts2.Core.Entities.Multiplayer.NetErrorInfo")
+            ?.GetMethod("GetErrorString", BindingFlags.Public | BindingFlags.Instance);
+    }
+
+    public static void Postfix(object __instance, ref string __result)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(__result) || __result.Contains("ModTheSpire2 help", StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+            if (!MultiplayerMismatchInfo.TryBuild(__instance, out var helpText, out var reportText))
+            {
+                return;
+            }
+
+            __result = __result.TrimEnd() + "\n\n" + helpText;
+            MultiplayerMismatchInfo.SaveLastReport(reportText);
+            CompanionLog.Write("Multiplayer ModMismatch help appended");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Multiplayer mismatch helper failed: " + ex.Message);
+        }
+    }
+}
+
+internal static class MultiplayerMismatchInfo
+{
+    private const int MaxItems = 24;
+
+    public static bool TryBuild(object info, out string helpText, out string reportText)
+    {
+        helpText = "";
+        reportText = "";
+        if (!LooksLikeModMismatch(info))
+        {
+            return false;
+        }
+
+        var localMissing = new System.Collections.Generic.List<string>();
+        var hostMissing = new System.Collections.Generic.List<string>();
+        CollectMissingMods(info, localMissing, hostMissing, new System.Collections.Generic.HashSet<object>(ReferenceEqualityComparer.Instance), 0);
+        var resolver = MismatchModResolver.Create();
+
+        var lines = new System.Collections.Generic.List<string>
+        {
+            "ModTheSpire2 help:",
+            "This multiplayer join failed because the host and local gameplay mod lists do not match."
+        };
+        if (localMissing.Count > 0)
+        {
+            lines.Add("Mods the host has but you are missing:");
+            lines.AddRange(localMissing.Take(MaxItems).Select(name => "- " + resolver.Describe(name)));
+            if (localMissing.Count > MaxItems)
+            {
+                lines.Add($"- ...and {localMissing.Count - MaxItems} more");
+            }
+        }
+        if (hostMissing.Count > 0)
+        {
+            lines.Add("Mods you have but the host is missing:");
+            lines.AddRange(hostMissing.Take(MaxItems).Select(name => "- " + resolver.Describe(name)));
+            if (hostMissing.Count > MaxItems)
+            {
+                lines.Add($"- ...and {hostMissing.Count - MaxItems} more");
+            }
+        }
+        if (localMissing.Count == 0 && hostMissing.Count == 0)
+        {
+            lines.Add("The game did not expose the exact missing mod names to ModTheSpire2.");
+        }
+        lines.Add("Use the ModTheSpire2 launcher to switch profiles or restart with a matching mod set. If a missing mod has no Workshop link here, search its name in the Workshop.");
+        lines.Add("A full report is saved to ModTheSpire2Data\\multiplayer-mismatch-last.txt.");
+        lines.Add("Open ModTheSpire2 Management to use Open Missing Mod Links or Copy Mismatch Report.");
+
+        helpText = string.Join("\n", lines);
+        reportText = "ModTheSpire2 multiplayer mismatch report\n"
+            + "Generated: " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n\n"
+            + "Use Open Missing Mod Links in ModTheSpire2 Management to open Workshop pages from this report.\n"
+            + "Use Copy Mismatch Report to copy this file for feedback.\n\n"
+            + helpText
+            + "\n\nKnown local/subscribed mod index:\n"
+            + resolver.BuildIndexReport()
+            + "\n\nRaw NetErrorInfo:\n" + SafeToString(info);
+        return true;
+    }
+
+    public static void SaveLastReport(string report)
+    {
+        try
+        {
+            var dir = Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "multiplayer-mismatch-last.txt"), report);
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Save multiplayer mismatch report failed: " + ex.Message);
+        }
+    }
+
+    private static bool LooksLikeModMismatch(object? info)
+    {
+        if (info is null)
+        {
+            return false;
+        }
+        try
+        {
+            var reason = info.GetType().GetMethod("GetReason", BindingFlags.Public | BindingFlags.Instance)
+                ?.Invoke(info, null);
+            if (StringLikeModMismatch(reason))
+            {
+                return true;
+            }
+        }
+        catch
+        {
+        }
+
+        return ObjectGraphContainsModMismatch(info, new System.Collections.Generic.HashSet<object>(ReferenceEqualityComparer.Instance), 0);
+    }
+
+    private static bool ObjectGraphContainsModMismatch(object? value, System.Collections.Generic.HashSet<object> seen, int depth)
+    {
+        if (value is null || depth > 3)
+        {
+            return false;
+        }
+        if (StringLikeModMismatch(value))
+        {
+            return true;
+        }
+        var type = value.GetType();
+        if (IsSimple(type) || !seen.Add(value))
+        {
+            return false;
+        }
+        foreach (var memberValue in EnumerateMemberValues(value, type))
+        {
+            if (ObjectGraphContainsModMismatch(memberValue, seen, depth + 1))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static bool StringLikeModMismatch(object? value)
+    {
+        if (value is null)
+        {
+            return false;
+        }
+        var text = value.ToString();
+        return text?.IndexOf("ModMismatch", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static void CollectMissingMods(
+        object? value,
+        System.Collections.Generic.List<string> localMissing,
+        System.Collections.Generic.List<string> hostMissing,
+        System.Collections.Generic.HashSet<object> seen,
+        int depth)
+    {
+        if (value is null || depth > 5)
+        {
+            return;
+        }
+        var type = value.GetType();
+        if (IsSimple(type) || !seen.Add(value))
+        {
+            return;
+        }
+
+        foreach (var field in SafeFields(type))
+        {
+            object? fieldValue;
+            try
+            {
+                fieldValue = field.GetValue(value);
+            }
+            catch
+            {
+                continue;
+            }
+            AddIfMissingList(field.Name, fieldValue, localMissing, hostMissing);
+            CollectMissingMods(fieldValue, localMissing, hostMissing, seen, depth + 1);
+        }
+
+        foreach (var prop in SafeProperties(type))
+        {
+            if (prop.GetIndexParameters().Length != 0)
+            {
+                continue;
+            }
+            object? propValue;
+            try
+            {
+                propValue = prop.GetValue(value);
+            }
+            catch
+            {
+                continue;
+            }
+            AddIfMissingList(prop.Name, propValue, localMissing, hostMissing);
+            CollectMissingMods(propValue, localMissing, hostMissing, seen, depth + 1);
+        }
+    }
+
+    private static void AddIfMissingList(string memberName, object? value, System.Collections.Generic.List<string> localMissing, System.Collections.Generic.List<string> hostMissing)
+    {
+        var target = memberName.IndexOf("missingModsOnLocal", StringComparison.OrdinalIgnoreCase) >= 0
+            ? localMissing
+            : memberName.IndexOf("missingModsOnHost", StringComparison.OrdinalIgnoreCase) >= 0
+                ? hostMissing
+                : null;
+        if (target is null)
+        {
+            return;
+        }
+        foreach (var item in FlattenStrings(value))
+        {
+            if (!target.Contains(item, StringComparer.OrdinalIgnoreCase))
+            {
+                target.Add(item);
+            }
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<string> FlattenStrings(object? value)
+    {
+        if (value is null)
+        {
+            yield break;
+        }
+        if (value is string text)
+        {
+            foreach (var item in SplitPossibleList(text))
+            {
+                yield return item;
+            }
+            yield break;
+        }
+        if (value is System.Collections.IEnumerable enumerable)
+        {
+            foreach (var item in enumerable)
+            {
+                foreach (var textItem in FlattenStrings(item))
+                {
+                    yield return textItem;
+                }
+            }
+            yield break;
+        }
+
+        var rendered = SafeToString(value);
+        foreach (var item in SplitPossibleList(rendered))
+        {
+            yield return item;
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<string> SplitPossibleList(string text)
+    {
+        foreach (var item in text.Split(['\n', '\r', ',', ';', '|'], StringSplitOptions.RemoveEmptyEntries))
+        {
+            var trimmed = item.Trim().Trim('[', ']', '"');
+            if (trimmed.Length > 0 && !trimmed.Equals("null", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return trimmed;
+            }
+        }
+    }
+
+    private static System.Collections.Generic.IEnumerable<object?> EnumerateMemberValues(object value, Type type)
+    {
+        foreach (var field in SafeFields(type))
+        {
+            object? fieldValue = null;
+            try
+            {
+                fieldValue = field.GetValue(value);
+            }
+            catch
+            {
+            }
+            if (fieldValue is not null)
+            {
+                yield return fieldValue;
+            }
+        }
+        foreach (var prop in SafeProperties(type))
+        {
+            if (prop.GetIndexParameters().Length != 0)
+            {
+                continue;
+            }
+            object? propValue = null;
+            try
+            {
+                propValue = prop.GetValue(value);
+            }
+            catch
+            {
+            }
+            if (propValue is not null)
+            {
+                yield return propValue;
+            }
+        }
+    }
+
+    private static FieldInfo[] SafeFields(Type type)
+    {
+        try
+        {
+            return type.GetFields(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static PropertyInfo[] SafeProperties(Type type)
+    {
+        try
+        {
+            return type.GetProperties(BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance);
+        }
+        catch
+        {
+            return [];
+        }
+    }
+
+    private static bool IsSimple(Type type)
+    {
+        return type.IsPrimitive || type.IsEnum || type == typeof(string) || type == typeof(decimal) || type == typeof(DateTime);
+    }
+
+    private static string SafeToString(object? value)
+    {
+        try
+        {
+            return value?.ToString() ?? "";
+        }
+        catch
+        {
+            return "";
+        }
+    }
+
+    private sealed class ReferenceEqualityComparer : System.Collections.Generic.IEqualityComparer<object>
+    {
+        public static readonly ReferenceEqualityComparer Instance = new();
+
+        public new bool Equals(object? x, object? y) => ReferenceEquals(x, y);
+
+        public int GetHashCode(object obj) => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
+    }
+}
+
+internal sealed class MismatchModResolver
+{
+    private readonly System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> byId;
+    private readonly System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> byName;
+    private readonly System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> byWorkshopId;
+    private readonly ModScanner.ModSummary[] mods;
+
+    internal MismatchModResolver(ModScanner.ModSummary[] mods)
+    {
+        this.mods = mods;
+        byId = BuildUniqueMap(mods, mod => mod.Id);
+        byName = BuildUniqueMap(mods, mod => mod.Name);
+        byWorkshopId = BuildUniqueMap(mods.Where(mod => !string.IsNullOrWhiteSpace(mod.WorkshopId)).ToArray(), mod => mod.WorkshopId);
+    }
+
+    public static MismatchModResolver Create()
+    {
+        try
+        {
+            var gameState = CompanionServices.GameSession.Detect();
+            return new MismatchModResolver(CompanionServices.Mods.Discover(gameState));
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Build mismatch mod resolver failed: " + ex.Message);
+            return new MismatchModResolver([]);
+        }
+    }
+
+    public static bool SelfTest()
+    {
+        var mods = new[]
+        {
+            new ModScanner.ModSummary(
+                "BaseLib",
+                "BaseLib",
+                ModSource.SteamWorkshop,
+                "3746969593",
+                "3.3.0",
+                "",
+                false,
+                true,
+                true,
+                true,
+                false,
+                "self-test",
+                [],
+                [],
+                [],
+                [],
+                ModScanner.HotApplyScope.RestartRequired),
+            new ModScanner.ModSummary(
+                "Act4Heart",
+                "Act 4 Heart",
+                ModSource.SteamWorkshop,
+                "3747537811",
+                "1.0.0",
+                "",
+                false,
+                true,
+                false,
+                false,
+                false,
+                "self-test",
+                ["BaseLib"],
+                [],
+                [],
+                [],
+                ModScanner.HotApplyScope.RestartRequired)
+        };
+        var resolver = new MismatchModResolver(mods);
+        var byId = resolver.Describe("Act4Heart");
+        var byName = resolver.Describe("Act 4 Heart");
+        var byUrl = resolver.Describe("https://steamcommunity.com/sharedfiles/filedetails/?id=3747537811");
+        var bySteamUrl = resolver.Describe("steam://url/CommunityFilePage/3747537811");
+        var unknownUrl = resolver.Describe("https://steamcommunity.com/sharedfiles/filedetails/?id=1234567890");
+        return byId.Contains("3747537811", StringComparison.Ordinal)
+            && byName.Contains("Act4Heart", StringComparison.Ordinal)
+            && byUrl.Contains("Act 4 Heart", StringComparison.Ordinal)
+            && bySteamUrl.Contains("Act 4 Heart", StringComparison.Ordinal)
+            && unknownUrl.Contains("1234567890", StringComparison.Ordinal);
+    }
+
+    public string Describe(string raw)
+    {
+        var token = CleanToken(raw);
+        if (token.Length == 0)
+        {
+            return raw;
+        }
+        var workshopId = ExtractWorkshopId(token);
+        var mod = Resolve(token, workshopId);
+        if (mod is not null)
+        {
+            return FormatKnown(token, mod);
+        }
+        if (!string.IsNullOrWhiteSpace(workshopId))
+        {
+            return token + " [" + WorkshopUrl(workshopId) + "]";
+        }
+        return token;
+    }
+
+    public string BuildIndexReport()
+    {
+        if (mods.Length == 0)
+        {
+            return "<no local/subscribed mods discovered>";
+        }
+        return string.Join("\n", mods
+            .OrderBy(mod => mod.Name, StringComparer.OrdinalIgnoreCase)
+            .ThenBy(mod => mod.Id, StringComparer.OrdinalIgnoreCase)
+            .Select(mod =>
+            {
+                var link = string.IsNullOrWhiteSpace(mod.WorkshopId) ? "" : " " + WorkshopUrl(mod.WorkshopId);
+                return "- " + mod.Name + " [" + mod.Id + "] source=" + mod.Source + " version=" + mod.Version + link;
+            }));
+    }
+
+    private ModScanner.ModSummary? Resolve(string token, string workshopId)
+    {
+        if (!string.IsNullOrWhiteSpace(workshopId) && byWorkshopId.TryGetValue(workshopId, out var byWorkshop))
+        {
+            return byWorkshop;
+        }
+        if (byId.TryGetValue(token, out var byExactId))
+        {
+            return byExactId;
+        }
+        if (byName.TryGetValue(token, out var byExactName))
+        {
+            return byExactName;
+        }
+
+        var normalized = Normalize(token);
+        foreach (var mod in mods)
+        {
+            if (Normalize(mod.Id) == normalized || Normalize(mod.Name) == normalized)
+            {
+                return mod;
+            }
+        }
+        return null;
+    }
+
+    private static string FormatKnown(string original, ModScanner.ModSummary mod)
+    {
+        var label = string.Equals(original, mod.Name, StringComparison.OrdinalIgnoreCase)
+            ? mod.Name
+            : original + " -> " + mod.Name;
+        var parts = new System.Collections.Generic.List<string> { label + " [" + mod.Id + "]" };
+        if (!string.IsNullOrWhiteSpace(mod.Version))
+        {
+            parts.Add("version " + mod.Version);
+        }
+        if (!string.IsNullOrWhiteSpace(mod.WorkshopId))
+        {
+            parts.Add(WorkshopUrl(mod.WorkshopId));
+        }
+        return string.Join(" | ", parts);
+    }
+
+    private static System.Collections.Generic.Dictionary<string, ModScanner.ModSummary> BuildUniqueMap(ModScanner.ModSummary[] mods, Func<ModScanner.ModSummary, string> keySelector)
+    {
+        var groups = mods
+            .Select(mod => (Key: CleanToken(keySelector(mod)), Mod: mod))
+            .Where(item => item.Key.Length > 0)
+            .GroupBy(item => item.Key, StringComparer.OrdinalIgnoreCase);
+        var map = new System.Collections.Generic.Dictionary<string, ModScanner.ModSummary>(StringComparer.OrdinalIgnoreCase);
+        foreach (var group in groups)
+        {
+            var items = group.ToArray();
+            if (items.Length == 1)
+            {
+                map[group.Key] = items[0].Mod;
+            }
+        }
+        return map;
+    }
+
+    private static string ExtractWorkshopId(string text)
+    {
+        const string idMarker = "id=";
+        var idIndex = text.IndexOf(idMarker, StringComparison.OrdinalIgnoreCase);
+        if (idIndex >= 0)
+        {
+            return ReadDigits(text, idIndex + idMarker.Length);
+        }
+        var digits = ReadDigits(text, 0);
+        return digits.Length >= 8 ? digits : "";
+    }
+
+    private static string ReadDigits(string text, int start)
+    {
+        while (start < text.Length && !char.IsDigit(text[start]))
+        {
+            start++;
+        }
+        var end = start;
+        while (end < text.Length && char.IsDigit(text[end]))
+        {
+            end++;
+        }
+        return end > start ? text[start..end] : "";
+    }
+
+    private static string CleanToken(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return "";
+        }
+        return raw.Trim().Trim('[', ']', '"', '\'');
+    }
+
+    private static string Normalize(string text)
+    {
+        var cleaned = CleanToken(text);
+        return new string(cleaned.Where(char.IsLetterOrDigit).Select(char.ToLowerInvariant).ToArray());
+    }
+
+    private static string WorkshopUrl(string workshopId) => "https://steamcommunity.com/sharedfiles/filedetails/?id=" + workshopId;
+}
+
+internal static class MultiplayerMismatchActions
+{
+    private const int MaxOpenLinks = 12;
+
+    public static void OpenLastWorkshopLinks()
+    {
+        try
+        {
+            var links = ReadLastWorkshopLinks().Take(MaxOpenLinks + 1).ToArray();
+            if (links.Length == 0)
+            {
+                NativeMessageBox.Show(
+                    "No multiplayer mismatch Workshop links were found yet.\n\nTry joining the host once, then open this again after ModTheSpire2 records the mismatch report.",
+                    "ModTheSpire2");
+                return;
+            }
+            var toOpen = links.Take(MaxOpenLinks).ToArray();
+            foreach (var link in toOpen)
+            {
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = link,
+                    UseShellExecute = true
+                });
+            }
+            var extra = links.Length > MaxOpenLinks
+                ? $"\n\nOnly the first {MaxOpenLinks} links were opened to avoid flooding Steam/browser windows."
+                : "";
+            NativeMessageBox.Show(
+                $"Opened {toOpen.Length} Workshop link(s) from the latest multiplayer mismatch report." + extra,
+                "ModTheSpire2");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Open mismatch Workshop links failed: " + ex);
+            NativeMessageBox.Show("Could not open mismatch Workshop links:\n" + ex.Message, "ModTheSpire2");
+        }
+    }
+
+    public static void CopyLastReport()
+    {
+        try
+        {
+            var path = GetReportPath();
+            if (!File.Exists(path))
+            {
+                NativeMessageBox.Show(
+                    "No multiplayer mismatch report was found yet.\n\nTry joining the host once, then copy the report after ModTheSpire2 records the mismatch.",
+                    "ModTheSpire2");
+                return;
+            }
+
+            var report = File.ReadAllText(path);
+            if (string.IsNullOrWhiteSpace(report))
+            {
+                NativeMessageBox.Show("The latest multiplayer mismatch report is empty.", "ModTheSpire2");
+                return;
+            }
+
+            DisplayServer.ClipboardSet(report);
+            NativeMessageBox.Show("Copied the latest multiplayer mismatch report to the clipboard.", "ModTheSpire2");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Copy mismatch report failed: " + ex);
+            NativeMessageBox.Show("Could not copy the multiplayer mismatch report:\n" + ex.Message, "ModTheSpire2");
+        }
+    }
+
+    public static string GetReportPath() => Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data", "multiplayer-mismatch-last.txt");
+
+    public static MismatchReportStatus GetLastReportStatus()
+    {
+        try
+        {
+            var path = GetReportPath();
+            if (!File.Exists(path))
+            {
+                return new MismatchReportStatus(false, 0, DateTime.MinValue, path);
+            }
+            var modified = File.GetLastWriteTime(path);
+            var links = ReadLastWorkshopLinks().Length;
+            return new MismatchReportStatus(true, links, modified, path);
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Read mismatch report status failed: " + ex.Message);
+            return new MismatchReportStatus(false, 0, DateTime.MinValue, GetReportPath());
+        }
+    }
+
+    public static string[] ReadLastWorkshopLinks()
+    {
+        var path = GetReportPath();
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+        var text = File.ReadAllText(path);
+        return ExtractWorkshopLinks(text).ToArray();
+    }
+
+    internal static System.Collections.Generic.IEnumerable<string> ExtractWorkshopLinks(string text)
+    {
+        var seen = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (System.Text.RegularExpressions.Match match in System.Text.RegularExpressions.Regex.Matches(
+                     text,
+                     @"(?:https?://steamcommunity\.com/sharedfiles/filedetails/[^\s\]]*?[?&]id=|steam://url/CommunityFilePage/)(\d+)",
+                     System.Text.RegularExpressions.RegexOptions.IgnoreCase))
+        {
+            var id = match.Groups[1].Value;
+            if (id.Length == 0 || !seen.Add(id))
+            {
+                continue;
+            }
+            yield return "https://steamcommunity.com/sharedfiles/filedetails/?id=" + id;
+        }
+    }
+
+    public static bool SelfTest()
+    {
+        var links = ExtractWorkshopLinks(
+            "one https://steamcommunity.com/sharedfiles/filedetails/?id=1111111111 " +
+            "dup https://steamcommunity.com/sharedfiles/filedetails/?id=1111111111 " +
+            "two https://steamcommunity.com/sharedfiles/filedetails/?foo=bar&id=2222222222 " +
+            "three steam://url/CommunityFilePage/3333333333").ToArray();
+        return links.Length == 3
+            && links[0].EndsWith("1111111111", StringComparison.Ordinal)
+            && links[1].EndsWith("2222222222", StringComparison.Ordinal)
+            && links[2].EndsWith("3333333333", StringComparison.Ordinal);
+    }
+
+    public readonly record struct MismatchReportStatus(bool Exists, int WorkshopLinkCount, DateTime LastModified, string Path);
+}
+
+internal static class UiLayoutStore
+{
+    private static readonly object Gate = new();
+    private static System.Collections.Generic.Dictionary<string, StoredPosition>? cache;
+
+    public static Vector2? Load(string key)
+    {
+        try
+        {
+            var all = LoadAll();
+            return all.TryGetValue(key, out var stored) ? new Vector2(stored.X, stored.Y) : null;
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("UI layout load failed: " + ex.Message);
+            return null;
+        }
+    }
+
+    public static void Save(string key, Vector2 position)
+    {
+        try
+        {
+            lock (Gate)
+            {
+                var all = LoadAll();
+                all[key] = new StoredPosition(position.X, position.Y);
+                var path = GetPath();
+                Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+                var json = JsonSerializer.Serialize(all, new JsonSerializerOptions { WriteIndented = true });
+                File.WriteAllText(path, json);
+                CompanionLog.Write("UI layout saved " + key + "=" + position);
+            }
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("UI layout save failed: " + ex.Message);
+        }
+    }
+
+    private static System.Collections.Generic.Dictionary<string, StoredPosition> LoadAll()
+    {
+        lock (Gate)
+        {
+            if (cache is not null)
+            {
+                return cache;
+            }
+
+            var path = GetPath();
+            if (!File.Exists(path))
+            {
+                cache = new System.Collections.Generic.Dictionary<string, StoredPosition>(StringComparer.OrdinalIgnoreCase);
+                return cache;
+            }
+
+            var json = File.ReadAllText(path);
+            cache = JsonSerializer.Deserialize<System.Collections.Generic.Dictionary<string, StoredPosition>>(json)
+                ?? new System.Collections.Generic.Dictionary<string, StoredPosition>(StringComparer.OrdinalIgnoreCase);
+            return cache;
+        }
+    }
+
+    private static string GetPath() => Path.Combine(LauncherActions.GetModDir(), "ModTheSpire2Data", "ui-layout.json");
+
+    private sealed class StoredPosition
+    {
+        public StoredPosition()
+        {
+        }
+
+        public StoredPosition(float x, float y)
+        {
+            X = x;
+            Y = y;
+        }
+
+        public float X { get; set; }
+        public float Y { get; set; }
+    }
+}
+
+internal static class DraggableUi
+{
+    private const double LongPressSeconds = 0.35;
+
+    public static void AttachLongPressDrag(Control surface, Control target, Control boundsParent, string layoutKey)
+    {
+        var state = new DragState();
+        surface.MouseDefaultCursorShape = Control.CursorShape.Move;
+        surface.AddChild(new DragReleaseWatcher(state, target, boundsParent, layoutKey));
+        surface.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } mouse)
+            {
+                if (mouse.Pressed)
+                {
+                    state.Pressed = true;
+                    state.Dragging = false;
+                    state.PressTicks = DateTime.UtcNow.Ticks;
+                    state.PressGlobal = mouse.GlobalPosition;
+                    state.GrabOffset = mouse.GlobalPosition - target.GlobalPosition;
+                    surface.AcceptEvent();
+                    return;
+                }
+
+                if (!state.Pressed)
+                {
+                    return;
+                }
+
+                var wasDragging = state.Dragging;
+                state.Pressed = false;
+                state.Dragging = false;
+                if (wasDragging)
+                {
+                    SaveClamped(target, boundsParent, layoutKey);
+                    surface.AcceptEvent();
+                    return;
+                }
+
+                return;
+            }
+
+            if (input is InputEventMouseMotion motion && state.Pressed)
+            {
+                var held = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - state.PressTicks).TotalSeconds;
+                if (!state.Dragging && held >= LongPressSeconds)
+                {
+                    state.Dragging = true;
+                    CompanionLog.Write("UI drag started: " + layoutKey);
+                }
+                if (state.Dragging)
+                {
+                    MoveControl(target, boundsParent, motion.GlobalPosition - state.GrabOffset);
+                    surface.AcceptEvent();
+                }
+            }
+        };
+    }
+
+    public static void AttachDragSurface(Control surface, Control target, Control boundsParent, string layoutKey)
+    {
+        var state = new DragState();
+        surface.MouseDefaultCursorShape = Control.CursorShape.Move;
+        surface.TooltipText = "Drag to move. Position is remembered.";
+        surface.GuiInput += input =>
+        {
+            if (input is InputEventMouseButton { ButtonIndex: MouseButton.Left } mouse)
+            {
+                if (mouse.Pressed)
+                {
+                    state.Pressed = true;
+                    state.Dragging = true;
+                    state.GrabOffset = mouse.GlobalPosition - target.GlobalPosition;
+                    surface.AcceptEvent();
+                    return;
+                }
+
+                if (state.Pressed)
+                {
+                    state.Pressed = false;
+                    state.Dragging = false;
+                    SaveClamped(target, boundsParent, layoutKey);
+                    surface.AcceptEvent();
+                }
+                return;
+            }
+
+            if (input is InputEventMouseMotion motion && state.Pressed)
+            {
+                MoveControl(target, boundsParent, motion.GlobalPosition - state.GrabOffset);
+                surface.AcceptEvent();
+            }
+        };
+    }
+
+    public static Vector2 ClampToParent(Vector2 position, Vector2 size, Vector2 parentSize)
+    {
+        var maxX = Math.Max(8, parentSize.X - size.X - 8);
+        var maxY = Math.Max(8, parentSize.Y - size.Y - 8);
+        return new Vector2(
+            Math.Clamp(position.X, 8, maxX),
+            Math.Clamp(position.Y, 8, maxY));
+    }
+
+    public static void MoveControl(Control target, Control boundsParent, Vector2 globalTopLeft)
+    {
+        var local = boundsParent.GetGlobalTransform().AffineInverse() * globalTopLeft;
+        var parentSize = boundsParent.GetViewportRect().Size;
+        target.Position = ClampToParent(local, target.Size, parentSize);
+    }
+
+    public static void SaveClamped(Control target, Control boundsParent, string layoutKey)
+    {
+        var parentSize = boundsParent.GetViewportRect().Size;
+        target.Position = ClampToParent(target.Position, target.Size, parentSize);
+        UiLayoutStore.Save(layoutKey, target.Position);
+    }
+
+    private static void FinishPress(DragState state, Control target, Control boundsParent, string layoutKey)
+    {
+        if (!state.Pressed)
+        {
+            return;
+        }
+
+        var wasDragging = state.Dragging;
+        state.Pressed = false;
+        state.Dragging = false;
+
+        if (wasDragging)
+        {
+            SaveClamped(target, boundsParent, layoutKey);
+        }
+    }
+
+    private sealed class DragState
+    {
+        public bool Pressed;
+        public bool Dragging;
+        public long PressTicks;
+        public Vector2 PressGlobal;
+        public Vector2 GrabOffset;
+    }
+
+    private sealed partial class DragReleaseWatcher : Node
+    {
+        private readonly DragState state;
+        private readonly Control target;
+        private readonly Control boundsParent;
+        private readonly string layoutKey;
+
+        public DragReleaseWatcher(DragState state, Control target, Control boundsParent, string layoutKey)
+        {
+            this.state = state;
+            this.target = target;
+            this.boundsParent = boundsParent;
+            this.layoutKey = layoutKey;
+        }
+
+        public override void _Process(double delta)
+        {
+            if (!state.Pressed || Input.IsMouseButtonPressed(MouseButton.Left))
+            {
+                return;
+            }
+
+            FinishPress(state, target, boundsParent, layoutKey);
+            CompanionLog.Write("UI press ended by process: " + layoutKey);
+        }
     }
 }
 
@@ -218,6 +1348,7 @@ internal static class RestartToLauncher
             }
 
             owner.AddChild(dialog);
+            UiStyle.AdoptGameTheme(dialog, owner);
             var backstop = new ColorRect
             {
                 Name = "Backstop",
@@ -291,35 +1422,33 @@ internal static class RestartToLauncher
 
             var body = new Label
             {
-                Text = "Close the current game and open the ModTheSpire2 launcher?\n\nThe launcher will appear after the game has fully exited. From there, you can launch vanilla or choose which mods to enable for this session.\n\nTo show ModTheSpire2 every time you press Play in Steam, set this Steam launch option. Keep %command% exactly as written:",
+                Text = "Close the current game and open the ModTheSpire2 launcher?\n\nThe launcher will appear after the game has fully exited. From there, you can launch vanilla or choose which mods to enable for this session. Current game launch arguments are forwarded to the launcher so renderer flags such as --rendering-driver opengl3 are preserved.\n\nTo show ModTheSpire2 every time you press Play in Steam, set this Steam launch option. Keep %command% exactly as written:",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 130),
+                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 0),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             UiStyle.ApplyMutedLabel(body);
             content.AddChild(body);
 
-            var optionBox = new PanelContainer
-            {
-                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 72),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
-            };
-            optionBox.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(new Color(0.09f, 0.065f, 0.045f, 0.96f), new Color(0.36f, 0.245f, 0.13f, 0.9f), 1, 4));
-            var optionLabel = new Label
+            var optionBox = new LineEdit
             {
                 Text = launchOption,
-                AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                Editable = false,
+                SelectingEnabled = true,
+                SelectAllOnFocus = true,
+                ContextMenuEnabled = true,
+                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 48),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                TooltipText = "Steam launch option. Click to select and copy the full command."
             };
-            UiStyle.ApplyBaseText(optionLabel);
-            optionBox.AddChild(optionLabel);
+            UiStyle.ApplyTextField(optionBox);
             content.AddChild(optionBox);
 
             var note = new Label
             {
                 Text = "Do not replace or remove %command%. If the game needs extra launch arguments, add them after %command%, for example: --rendering-driver opengl3. Steam Workshop cannot change launch options automatically.",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 58),
+                CustomMinimumSize = new Vector2(restartMetrics.ContentWidth, 0),
                 SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             UiStyle.ApplyMutedLabel(note);
@@ -353,6 +1482,7 @@ internal static class RestartToLauncher
             cancel.Pressed += () => CloseDialog("cancel");
             buttons.AddChild(cancel);
 
+            UiStyle.ApplyGameTypography(dialog, owner);
             CenterRestartDialog(dialog, panel, scroll, buttons, title, body, optionBox, note);
             dialog.Resized += () => CenterRestartDialog(dialog, panel, scroll, buttons, title, body, optionBox, note);
             dialog.CallDeferred(Control.MethodName.GrabFocus);
@@ -376,9 +1506,9 @@ internal static class RestartToLauncher
         scroll.CustomMinimumSize = new Vector2(metrics.ContentWidth, metrics.ScrollHeight);
         buttons.CustomMinimumSize = new Vector2(metrics.ContentWidth, metrics.ButtonAreaHeight);
         title.CustomMinimumSize = new Vector2(metrics.ContentWidth, 34);
-        body.CustomMinimumSize = new Vector2(metrics.ContentWidth, 130);
-        optionBox.CustomMinimumSize = new Vector2(metrics.ContentWidth, 72);
-        note.CustomMinimumSize = new Vector2(metrics.ContentWidth, 34);
+        body.CustomMinimumSize = new Vector2(metrics.ContentWidth, 0);
+        optionBox.CustomMinimumSize = new Vector2(metrics.ContentWidth, 48);
+        note.CustomMinimumSize = new Vector2(metrics.ContentWidth, 0);
         panel.Position = new Vector2(
             Math.Max(8, (size.X - metrics.PanelSize.X) * 0.5f),
             Math.Max(8, (size.Y - metrics.PanelSize.Y) * 0.5f));
@@ -415,14 +1545,15 @@ internal static class RestartToLauncher
         try
         {
             var pid = Process.GetCurrentProcess().Id;
+            var restartArgs = BuildRestartLauncherArguments(pid);
             Process.Start(new ProcessStartInfo
             {
                 FileName = launcher,
-                Arguments = "--wait-for-pid " + pid,
+                Arguments = restartArgs,
                 WorkingDirectory = modDir,
                 UseShellExecute = true
             });
-            CompanionLog.Write("Started launcher for restart, pid=" + pid);
+            CompanionLog.Write("Started launcher for restart, args=" + restartArgs);
         }
         catch (Exception ex)
         {
@@ -451,6 +1582,40 @@ internal static class RestartToLauncher
             }
         }
     }
+
+    private static string BuildRestartLauncherArguments(int pid)
+    {
+        var current = System.Environment.GetCommandLineArgs();
+        var args = "--wait-for-pid " + pid;
+        if (current.Length == 0 || string.IsNullOrWhiteSpace(current[0]))
+        {
+            return args;
+        }
+
+        args += " -- " + QuoteArg(current[0]);
+        for (var i = 1; i < current.Length; i++)
+        {
+            args += " " + QuoteArg(current[i]);
+        }
+
+        return args;
+    }
+
+    private static string QuoteArg(string arg)
+    {
+        if (string.IsNullOrEmpty(arg))
+        {
+            return "\"\"";
+        }
+
+        var needsQuotes = arg.Any(ch => char.IsWhiteSpace(ch) || ch == '"');
+        if (!needsQuotes)
+        {
+            return arg;
+        }
+
+        return "\"" + arg.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    }
 }
 
 internal static class ModManagementDialog
@@ -474,8 +1639,8 @@ internal static class ModManagementDialog
                 return;
             }
 
-            var gameState = GameSessionState.Detect();
-            var mods = ModScanner.Discover(gameState);
+            var gameState = CompanionServices.GameSession.Detect();
+            var mods = CompanionServices.Mods.Discover(gameState);
             var enabledMods = mods
                 .Where(m => m.IsEnabled)
                 .OrderBy(m => m.Name, StringComparer.OrdinalIgnoreCase)
@@ -493,7 +1658,7 @@ internal static class ModManagementDialog
                 Name = "ModTheSpire2ManagementDialog",
                 AnchorsPreset = (int)Control.LayoutPreset.FullRect,
                 MouseFilter = Control.MouseFilterEnum.Stop,
-                ZIndex = 400
+                ZIndex = 4095
             };
             void CloseDialog(string reason)
             {
@@ -502,6 +1667,7 @@ internal static class ModManagementDialog
             }
 
             owner.AddChild(dialog);
+            UiStyle.AdoptGameTheme(dialog, owner);
             var metrics = UiMetrics.From(dialog.GetViewportRect().Size);
 
             var backstop = new ColorRect
@@ -553,8 +1719,10 @@ internal static class ModManagementDialog
             var header = new HBoxContainer
             {
                 CustomMinimumSize = new Vector2(metrics.ContentWidth, 42),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                MouseFilter = Control.MouseFilterEnum.Stop
             };
+            DraggableUi.AttachDragSurface(header, panel, dialog, "management_panel");
             root.AddChild(header);
 
             var title = new Label
@@ -562,7 +1730,8 @@ internal static class ModManagementDialog
                 Text = "ModTheSpire2 Management",
                 HorizontalAlignment = HorizontalAlignment.Center,
                 CustomMinimumSize = new Vector2(Math.Max(180, metrics.ContentWidth - 244), 34),
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
+                MouseFilter = Control.MouseFilterEnum.Pass
             };
             UiStyle.ApplyTitle(title);
             header.AddChild(title);
@@ -580,12 +1749,16 @@ internal static class ModManagementDialog
             {
                 Text = "Whole-mod enablement is managed before startup. To change enabled mods, close this game and reopen the ModTheSpire2 launcher, then start the game again with the selected profile.",
                 AutowrapMode = TextServer.AutowrapMode.WordSmart,
-                CustomMinimumSize = new Vector2(metrics.ContentWidth, 42)
+                CustomMinimumSize = new Vector2(metrics.ContentWidth, 0),
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             UiStyle.ApplyMutedLabel(intro);
             root.AddChild(intro);
 
-            root.AddChild(CreateStateSummaryPanel(gameState, mods.Length, enabledMods.Length, loadedMods.Length, metrics.ContentWidth));
+            var stateSummaryPanel = CreateStateSummaryPanel(gameState, mods.Length, enabledMods.Length, loadedMods.Length, metrics.ContentWidth);
+            root.AddChild(stateSummaryPanel);
+            var mismatchReportPanel = CreateMismatchReportPanel(metrics.ContentWidth);
+            root.AddChild(mismatchReportPanel);
 
             var scroll = new ScrollContainer
             {
@@ -599,8 +1772,7 @@ internal static class ModManagementDialog
 
             var lists = new VBoxContainer
             {
-                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill,
-                Theme = new Theme()
+                SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
             };
             scroll.AddChild(lists);
 
@@ -646,10 +1818,21 @@ internal static class ModManagementDialog
             restartButton.Pressed += () => RestartToLauncher.ShowConfirm(dialog);
             buttons.AddChild(restartButton);
 
+            var openMismatchLinks = CreateActionButton("Open Missing Mod Links");
+            openMismatchLinks.TooltipText = "Open Workshop links from the latest multiplayer mod mismatch report.";
+            openMismatchLinks.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks;
+            buttons.AddChild(openMismatchLinks);
+
+            var copyMismatchReport = CreateActionButton("Copy Mismatch Report");
+            copyMismatchReport.TooltipText = "Copy the latest multiplayer mod mismatch report for feedback.";
+            copyMismatchReport.Pressed += MultiplayerMismatchActions.CopyLastReport;
+            buttons.AddChild(copyMismatchReport);
+
             var close = CreateActionButton("Close");
             close.Pressed += () => CloseDialog("button");
             buttons.AddChild(close);
 
+            UiStyle.ApplyGameTypography(dialog, owner);
             dialog.Resized += () =>
             {
                 var updated = UiMetrics.From(dialog.GetViewportRect().Size);
@@ -659,10 +1842,12 @@ internal static class ModManagementDialog
                 buttons.CustomMinimumSize = new Vector2(updated.ContentWidth, updated.ButtonAreaHeight);
                 header.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
                 title.CustomMinimumSize = new Vector2(Math.Max(180, updated.ContentWidth - 244), 34);
-                intro.CustomMinimumSize = new Vector2(updated.ContentWidth, 42);
-                CenterPanel(dialog, panel);
+                intro.CustomMinimumSize = new Vector2(updated.ContentWidth, 0);
+                stateSummaryPanel.CustomMinimumSize = new Vector2(updated.ContentWidth, stateSummaryPanel.CustomMinimumSize.Y);
+                mismatchReportPanel.CustomMinimumSize = new Vector2(updated.ContentWidth, mismatchReportPanel.CustomMinimumSize.Y);
+                PositionPanel(dialog, panel);
             };
-            CenterPanel(dialog, panel);
+            PositionPanel(dialog, panel);
             dialog.CallDeferred(Control.MethodName.GrabFocus);
             CompanionLog.Write("Management dialog shown. detected=" + mods.Length + " enabled=" + enabledMods.Length + " loaded=" + loadedMods.Length);
         }
@@ -677,7 +1862,7 @@ internal static class ModManagementDialog
     {
         var container = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 38),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         container.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(SectionColor, UiStyle.AccentColor, 1, 5));
@@ -685,7 +1870,7 @@ internal static class ModManagementDialog
         {
             Text = text,
             VerticalAlignment = VerticalAlignment.Center,
-            CustomMinimumSize = new Vector2(0, 34),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         UiStyle.ApplyHeaderLabel(label);
@@ -718,7 +1903,7 @@ internal static class ModManagementDialog
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(contentWidth, 92),
+            CustomMinimumSize = new Vector2(contentWidth, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         var border = gameState.IsSafeMainMenuWithoutRun
@@ -763,6 +1948,32 @@ internal static class ModManagementDialog
         summary.AddThemeColorOverride("font_color", UiStyle.MutedTextColor);
         box.AddChild(summary);
 
+        return panel;
+    }
+
+    private static Control CreateMismatchReportPanel(float contentWidth)
+    {
+        var status = MultiplayerMismatchActions.GetLastReportStatus();
+        var panel = new PanelContainer
+        {
+            CustomMinimumSize = new Vector2(contentWidth, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        var border = status.Exists ? UiStyle.AccentColor : UiStyle.MutedTextColor;
+        panel.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(new Color(0.095f, 0.067f, 0.045f, 0.92f), border, 1, 6));
+
+        var text = status.Exists
+            ? $"Latest multiplayer mismatch report: {status.LastModified:yyyy-MM-dd HH:mm:ss}, Workshop links found: {status.WorkshopLinkCount}. Use the buttons below to open links or copy the report."
+            : "No multiplayer mismatch report has been recorded yet. Try joining a host with a different gameplay mod list, then reopen this panel.";
+        var label = new Label
+        {
+            Text = text,
+            AutowrapMode = TextServer.AutowrapMode.WordSmart,
+            CustomMinimumSize = new Vector2(contentWidth - 18, 0),
+            SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
+        };
+        UiStyle.ApplyMutedLabel(label);
+        panel.AddChild(label);
         return panel;
     }
 
@@ -948,7 +2159,7 @@ internal static class ModManagementDialog
         {
             Text = text,
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(0, 32),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         UiStyle.ApplyMutedLabel(label);
@@ -959,7 +2170,7 @@ internal static class ModManagementDialog
     {
         var panel = new PanelContainer
         {
-            CustomMinimumSize = new Vector2(0, 42),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         panel.AddThemeStyleboxOverride("panel", UiStyle.CreatePanelStyle(alternate ? RowAltColor : RowColor, new Color(0.36f, 0.245f, 0.13f, 0.8f), 1, 4));
@@ -991,7 +2202,7 @@ internal static class ModManagementDialog
     private static void AddLoadOrderSectionCore(VBoxContainer parent, ModScanner.ModSummary[] mods)
     {
         AddSectionHeader(parent, "Load Order");
-        var order = LoadOrderManager.CreateInitialOrder(mods);
+        var order = CompanionServices.LoadOrder.CreateInitialOrder(mods);
         var list = new ItemList
         {
             CustomMinimumSize = new Vector2(0, 190),
@@ -1005,7 +2216,7 @@ internal static class ModManagementDialog
         {
             Text = order.Count == 0 ? "No enabled mods to order." : "Enabled mods are shown in the order ModTheSpire2 will save for the launcher.",
             AutowrapMode = TextServer.AutowrapMode.WordSmart,
-            CustomMinimumSize = new Vector2(0, 34),
+            CustomMinimumSize = new Vector2(0, 0),
             SizeFlagsHorizontal = Control.SizeFlags.ExpandFill
         };
         UiStyle.ApplyMutedLabel(status);
@@ -1044,7 +2255,7 @@ internal static class ModManagementDialog
         up.Pressed += () =>
         {
             var index = SelectedIndex();
-            if (LoadOrderManager.TryMove(order, index, -1, out var message))
+            if (CompanionServices.LoadOrder.TryMove(order, index, -1, out var message))
             {
                 RefreshOrderList(index - 1);
             }
@@ -1056,7 +2267,7 @@ internal static class ModManagementDialog
         down.Pressed += () =>
         {
             var index = SelectedIndex();
-            if (LoadOrderManager.TryMove(order, index, 1, out var message))
+            if (CompanionServices.LoadOrder.TryMove(order, index, 1, out var message))
             {
                 RefreshOrderList(index + 1);
             }
@@ -1067,16 +2278,16 @@ internal static class ModManagementDialog
         var save = CreateActionButton("Save Order");
         save.Pressed += () =>
         {
-            status.Text = LoadOrderManager.Save(order);
+            status.Text = CompanionServices.LoadOrder.Save(order);
         };
         row.AddChild(save);
 
         var reset = CreateActionButton("Reset Order");
         reset.Pressed += () =>
         {
-            status.Text = LoadOrderManager.Reset();
+            status.Text = CompanionServices.LoadOrder.Reset();
             order.Clear();
-            order.AddRange(LoadOrderManager.CreateDefaultOrder(mods));
+            order.AddRange(CompanionServices.LoadOrder.CreateDefaultOrder(mods));
             RefreshOrderList(order.Count > 0 ? 0 : -1);
         };
         row.AddChild(reset);
@@ -1085,15 +2296,18 @@ internal static class ModManagementDialog
         CompanionLog.Write("Load order section shown entries=" + order.Count);
     }
 
-    private static void CenterPanel(Control root, Control panel)
+    private static void PositionPanel(Control root, Control panel)
     {
         var size = root.GetViewportRect().Size;
         var panelSize = UiMetrics.From(size).PanelSize;
         panel.CustomMinimumSize = panelSize;
         panel.Size = panelSize;
-        panel.Position = new Vector2(
-            Math.Max(8, (size.X - panelSize.X) * 0.5f),
-            Math.Max(8, (size.Y - panelSize.Y) * 0.5f));
+        var saved = UiLayoutStore.Load("management_panel");
+        panel.Position = saved is Vector2 position
+            ? DraggableUi.ClampToParent(position, panelSize, size)
+            : new Vector2(
+                Math.Max(8, (size.X - panelSize.X) * 0.5f),
+                Math.Max(8, (size.Y - panelSize.Y) * 0.5f));
         panel.Size = panelSize;
     }
 
@@ -1141,14 +2355,11 @@ internal static class ModManagementDialog
 internal static class UiStyle
 {
     public static readonly Color PanelBorderColor = new(0.68f, 0.47f, 0.23f, 1f);
-    public static readonly Color TextColor = new(0.93f, 0.86f, 0.72f, 1f);
-    public static readonly Color MutedTextColor = new(0.76f, 0.67f, 0.52f, 1f);
+    public static readonly Color TextColor = new(0.97f, 0.94f, 0.86f, 1f);
+    public static readonly Color MutedTextColor = new(0.84f, 0.78f, 0.67f, 1f);
     public static readonly Color AccentColor = new(0.84f, 0.58f, 0.27f, 1f);
     public static readonly Color WarningColor = new(0.96f, 0.72f, 0.32f, 1f);
     public static readonly Color SuccessColor = new(0.63f, 0.82f, 0.49f, 1f);
-    private static readonly Color ButtonColor = new(0.31f, 0.21f, 0.115f, 1f);
-    private static readonly Color ButtonHoverColor = new(0.42f, 0.28f, 0.14f, 1f);
-    private static readonly Color ButtonPressedColor = new(0.22f, 0.145f, 0.082f, 1f);
 
     public static StyleBoxFlat CreatePanelStyle(Color background, Color border, int borderWidth, int radius) =>
         new()
@@ -1163,10 +2374,10 @@ internal static class UiStyle
             CornerRadiusTopRight = radius,
             CornerRadiusBottomLeft = radius,
             CornerRadiusBottomRight = radius,
-            ContentMarginLeft = 18,
-            ContentMarginTop = 18,
-            ContentMarginRight = 18,
-            ContentMarginBottom = 18
+            ContentMarginLeft = 12,
+            ContentMarginTop = 8,
+            ContentMarginRight = 12,
+            ContentMarginBottom = 8
         };
 
     public static StyleBoxFlat CreateCompactStyle(Color background, Color border, int borderWidth, int radius) =>
@@ -1195,6 +2406,27 @@ internal static class UiStyle
         control.AddThemeColorOverride("font_hover_color", TextColor);
     }
 
+    public static void AdoptGameTheme(Control target, Node context)
+    {
+        for (var current = context; current is not null; current = current.GetParent())
+        {
+            if (current is Control { Theme: not null } themed)
+            {
+                target.Theme = themed.Theme;
+                return;
+            }
+        }
+    }
+
+    public static void AdoptGameTheme(Control target, Control template)
+    {
+        if (template.Theme is not null)
+        {
+            target.Theme = template.Theme;
+        }
+        target.ThemeTypeVariation = template.ThemeTypeVariation;
+    }
+
     public static void ApplyMutedLabel(Label label)
     {
         label.AddThemeColorOverride("font_color", MutedTextColor);
@@ -1214,17 +2446,140 @@ internal static class UiStyle
         label.AddThemeColorOverride("font_shadow_color", new Color(0.02f, 0.015f, 0.01f, 1f));
         label.AddThemeConstantOverride("shadow_offset_x", 1);
         label.AddThemeConstantOverride("shadow_offset_y", 2);
+        label.AddThemeFontSizeOverride("font_size", 20);
+    }
+
+    public static void ApplyGameTypography(Control root, Node context)
+    {
+        try
+        {
+            var source = FindFontSource(context, root);
+            var font = source?.GetThemeFont("font");
+            if (font is null)
+            {
+                CompanionLog.Write("Native UI font source was not found; retaining inherited theme font");
+                return;
+            }
+
+            ApplyFontRecursive(root, font);
+            CompanionLog.Write("Applied native UI font from " + source!.GetPath());
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("Native UI font adoption failed: " + ex.Message);
+        }
+    }
+
+    private static Label? FindFontSource(Node context, Node excludedRoot)
+    {
+        for (var scope = context; scope is not null; scope = scope.GetParent())
+        {
+            if (scope.FindChild("InstalledModsTitle", recursive: true, owned: false) is Label preferred &&
+                !IsWithin(preferred, excludedRoot))
+            {
+                return preferred;
+            }
+        }
+
+        for (var scope = context; scope is not null; scope = scope.GetParent())
+        {
+            var source = FindFirstLabel(scope, excludedRoot);
+            if (source is not null)
+            {
+                return source;
+            }
+        }
+
+        return null;
+    }
+
+    private static Label? FindFirstLabel(Node node, Node excludedRoot)
+    {
+        if (ReferenceEquals(node, excludedRoot))
+        {
+            return null;
+        }
+        if (node is Label label && label.Visible)
+        {
+            return label;
+        }
+        foreach (var child in node.GetChildren())
+        {
+            var found = FindFirstLabel(child, excludedRoot);
+            if (found is not null)
+            {
+                return found;
+            }
+        }
+        return null;
+    }
+
+    private static bool IsWithin(Node node, Node possibleAncestor)
+    {
+        for (var current = node; current is not null; current = current.GetParent())
+        {
+            if (ReferenceEquals(current, possibleAncestor))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static void ApplyFontRecursive(Node node, Font font)
+    {
+        if (node is Label or Button or LineEdit or TextEdit or ItemList or RichTextLabel)
+        {
+            ((Control)node).AddThemeFontOverride("font", font);
+        }
+        if (node is RichTextLabel richText)
+        {
+            richText.AddThemeFontOverride("normal_font", font);
+            richText.AddThemeFontOverride("bold_font", font);
+        }
+        foreach (var child in node.GetChildren())
+        {
+            ApplyFontRecursive(child, font);
+        }
     }
 
     public static void ApplyButton(Button button)
     {
-        button.AddThemeStyleboxOverride("normal", CreatePanelStyle(ButtonColor, AccentColor, 1, 4));
-        button.AddThemeStyleboxOverride("hover", CreatePanelStyle(ButtonHoverColor, AccentColor, 1, 4));
-        button.AddThemeStyleboxOverride("pressed", CreatePanelStyle(ButtonPressedColor, AccentColor, 1, 4));
+        button.FocusMode = Control.FocusModeEnum.All;
         button.AddThemeColorOverride("font_color", TextColor);
         button.AddThemeColorOverride("font_hover_color", TextColor);
-        button.AddThemeColorOverride("font_pressed_color", AccentColor);
+        button.AddThemeColorOverride("font_pressed_color", TextColor);
         button.AddThemeColorOverride("font_focus_color", TextColor);
+        button.AddThemeStyleboxOverride("normal", CreateCompactStyle(
+            new Color(0.075f, 0.14f, 0.15f, 0.98f),
+            new Color(0.28f, 0.53f, 0.56f, 1f), 1, 4));
+        button.AddThemeStyleboxOverride("hover", CreateCompactStyle(
+            new Color(0.11f, 0.23f, 0.24f, 0.98f),
+            new Color(0.45f, 0.76f, 0.78f, 1f), 2, 4));
+        button.AddThemeStyleboxOverride("pressed", CreateCompactStyle(
+            new Color(0.055f, 0.105f, 0.115f, 0.98f),
+            AccentColor, 2, 4));
+        button.AddThemeStyleboxOverride("focus", CreateCompactStyle(
+            new Color(0.085f, 0.17f, 0.18f, 0.98f),
+            AccentColor, 2, 4));
+    }
+
+    public static void ApplyTextField(LineEdit field)
+    {
+        field.FocusMode = Control.FocusModeEnum.All;
+        field.AddThemeColorOverride("font_color", TextColor);
+        field.AddThemeColorOverride("font_uneditable_color", TextColor);
+        field.AddThemeColorOverride("font_selected_color", new Color(0.12f, 0.08f, 0.04f, 1f));
+        field.AddThemeColorOverride("selection_color", AccentColor);
+        field.AddThemeStyleboxOverride("normal", CreateCompactStyle(
+            new Color(0.055f, 0.04f, 0.03f, 0.98f),
+            PanelBorderColor, 1, 4));
+        field.AddThemeStyleboxOverride("read_only", CreateCompactStyle(
+            new Color(0.055f, 0.04f, 0.03f, 0.98f),
+            PanelBorderColor, 1, 4));
+        field.AddThemeStyleboxOverride("focus", CreateCompactStyle(
+            new Color(0.07f, 0.05f, 0.035f, 0.98f),
+            AccentColor, 2, 4));
     }
 
     public static Button CreateButton(string text, float width, float height)
@@ -1254,10 +2609,7 @@ internal static class UiStyle
 
     public static void ApplyItemList(ItemList list)
     {
-        list.AddThemeStyleboxOverride("panel", CreatePanelStyle(new Color(0.11f, 0.075f, 0.048f, 0.96f), new Color(0.36f, 0.245f, 0.13f, 0.9f), 1, 4));
-        list.AddThemeStyleboxOverride("selected", CreatePanelStyle(new Color(0.35f, 0.235f, 0.12f, 0.96f), AccentColor, 1, 3));
-        list.AddThemeColorOverride("font_color", TextColor);
-        list.AddThemeColorOverride("font_selected_color", TextColor);
+        list.FocusMode = Control.FocusModeEnum.All;
     }
 }
 
@@ -1895,29 +3247,23 @@ internal static class ModScanner
 
     private static System.Collections.Generic.HashSet<string> ReadRuntimeLoadedModHints()
     {
-        var loaded = new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            "ModTheSpire2"
-        };
-
         try
         {
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-            {
-                var name = assembly.GetName().Name;
-                if (!string.IsNullOrWhiteSpace(name))
-                {
-                    loaded.Add(name);
-                }
-            }
-            CompanionLog.Write("Runtime loaded assembly hints=" + loaded.Count);
+            var snapshot = CompanionServices.RuntimeMods.Capture();
+            var loaded = new System.Collections.Generic.HashSet<string>(snapshot.LoadedAssemblyNames, StringComparer.OrdinalIgnoreCase);
+            loaded.UnionWith(snapshot.LoadedModIds);
+            CompanionLog.Write(
+                "Runtime loaded hints=" + loaded.Count +
+                " modIds=" + snapshot.LoadedModIds.Count +
+                " multiAssemblyMods=" + snapshot.AssemblyCounts.Count(pair => pair.Value > 1) +
+                " officialMap=" + snapshot.UsedOfficialAssemblyMap);
+            return loaded;
         }
         catch (Exception ex)
         {
             CompanionLog.Write("Read runtime loaded hints failed: " + ex.Message);
+            return new System.Collections.Generic.HashSet<string>(StringComparer.OrdinalIgnoreCase) { "ModTheSpire2" };
         }
-
-        return loaded;
     }
 
     private static string[] GetDependencies(JsonElement root)
@@ -2805,7 +4151,7 @@ internal static class HotApplyService
             {
                 var enabledHotIds = ResolveHotDependencies(selectedCandidates, allHotCandidates);
                 var allHotIds = allHotCandidates.Select(m => m.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
-                var stateBlock = FindStateSafetyBlock(modList, allHotCandidates, enabledHotIds, GameSessionState.Detect());
+                var stateBlock = FindStateSafetyBlock(modList, allHotCandidates, enabledHotIds, CompanionServices.GameSession.Detect());
                 if (stateBlock is not null)
                 {
                     NativeMessageBox.Show(
@@ -3315,57 +4661,45 @@ internal static class LoadOrderManager
 
 internal static class LauncherActions
 {
-    public static string GetModDir() => Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location) ?? "";
+    public static string GetModDir() => CompanionServices.Paths.ModDirectory;
 
-    public static string GetLauncherPath() => Path.Combine(GetModDir(), "ModTheSpire2Launcher.exe");
+    public static string GetLauncherPath() => CompanionServices.Paths.LauncherPath;
 
-    public static string GetLaunchOption() => $"\"{GetLauncherPath()}\" -- %command%";
+    public static string GetLaunchOption() => CompanionServices.Launcher.LaunchOption;
 
     public static void OpenLauncher()
     {
-        var modDir = GetModDir();
-        var launcher = GetLauncherPath();
-        var readme = Path.Combine(modDir, "README.md");
-        var target = File.Exists(launcher) ? launcher : readme;
-        if (!File.Exists(target))
+        if (!CompanionServices.Launcher.TryOpen(out var error))
         {
-            NativeMessageBox.Show("ModTheSpire2Launcher.exe was not found. Please check that the mod files are complete.", "ModTheSpire2");
-            return;
+            CompanionLog.Write("Open launcher failed: " + error);
+            NativeMessageBox.Show(error, "ModTheSpire2");
         }
-
-        Process.Start(new ProcessStartInfo
-        {
-            FileName = target,
-            WorkingDirectory = modDir,
-            UseShellExecute = true
-        });
     }
 }
 
 internal static class ModConfigIntegration
 {
     private static bool s_registered;
-    private static bool s_attempted;
 
     public static void TryRegister()
     {
-        if (s_registered || s_attempted)
+        if (s_registered)
         {
             return;
         }
 
-        s_attempted = true;
         try
         {
-            var registryType = Type.GetType("BaseLib.Config.ModConfigRegistry, BaseLib", throwOnError: false);
-            var simpleConfigType = Type.GetType("BaseLib.Config.SimpleModConfig, BaseLib", throwOnError: false);
-            var buttonAttributeType = Type.GetType("BaseLib.Config.ConfigButtonAttribute, BaseLib", throwOnError: false);
+            var registryType = BaseLibReflection.FindType("BaseLib.Config.ModConfigRegistry");
+            var simpleConfigType = BaseLibReflection.FindType("BaseLib.Config.SimpleModConfig");
+            var buttonAttributeType = BaseLibReflection.FindType("BaseLib.Config.ConfigButtonAttribute");
             if (registryType is null || simpleConfigType is null || buttonAttributeType is null)
             {
                 CompanionLog.Write("BaseLib ModConfig not present");
                 return;
             }
 
+            BaseLibModConfigSubmenuPatch.TryPatchLate();
             var configType = DynamicModConfigType.Create(simpleConfigType, buttonAttributeType);
             var config = Activator.CreateInstance(configType);
             simpleConfigType.GetProperty("ModId")?.SetValue(config, "ModTheSpire2");
@@ -3381,14 +4715,101 @@ internal static class ModConfigIntegration
     }
 }
 
+internal static class BaseLibReflection
+{
+    public static Type? FindType(string fullName)
+    {
+        foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+        {
+            try
+            {
+                var direct = assembly.GetType(fullName, throwOnError: false, ignoreCase: false);
+                if (direct is not null)
+                {
+                    return direct;
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                foreach (var type in SafeGetTypes(assembly))
+                {
+                    if (string.Equals(type.FullName, fullName, StringComparison.Ordinal))
+                    {
+                        return type;
+                    }
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return null;
+    }
+
+    private static System.Collections.Generic.IEnumerable<Type> SafeGetTypes(Assembly assembly)
+    {
+        try
+        {
+            return assembly.GetTypes();
+        }
+        catch (ReflectionTypeLoadException ex)
+        {
+            return ex.Types.Where(type => type is not null)!;
+        }
+        catch
+        {
+            return [];
+        }
+    }
+}
+
 [HarmonyPatch]
 internal static class BaseLibModConfigSubmenuPatch
 {
     private const string ButtonNodeName = "ModTheSpire2BaseLibButton";
+    private static bool s_latePatchAttempted;
+    private static bool s_latePatchSucceeded;
+
+    public static bool Prepare()
+    {
+        return BaseLibReflection.FindType("BaseLib.Config.UI.NModConfigSubmenu") is not null;
+    }
+
+    public static void TryPatchLate()
+    {
+        if (s_latePatchSucceeded || s_latePatchAttempted)
+        {
+            return;
+        }
+
+        var target = TargetMethod();
+        if (target is null)
+        {
+            return;
+        }
+
+        s_latePatchAttempted = true;
+        try
+        {
+            var postfix = typeof(BaseLibModConfigSubmenuPatch).GetMethod(nameof(Postfix), BindingFlags.Public | BindingFlags.Static);
+            new Harmony("HZDH.ModTheSpire2.BaseLibLate").Patch(target, postfix: postfix is null ? null : new HarmonyMethod(postfix));
+            s_latePatchSucceeded = true;
+            CompanionLog.Write("BaseLib submenu patch installed late");
+        }
+        catch (Exception ex)
+        {
+            CompanionLog.Write("BaseLib submenu late patch failed: " + ex);
+        }
+    }
 
     public static MethodBase? TargetMethod()
     {
-        var type = Type.GetType("BaseLib.Config.UI.NModConfigSubmenu, BaseLib", throwOnError: false);
+        var type = BaseLibReflection.FindType("BaseLib.Config.UI.NModConfigSubmenu");
         return type?.GetMethod("_Ready", BindingFlags.Public | BindingFlags.Instance);
     }
 
@@ -3429,7 +4850,7 @@ internal static class BaseLibModConfigSubmenuPatch
 
     private static Control CreateBaseLibListButton(Node owner)
     {
-        var buttonType = Type.GetType("BaseLib.Config.UI.NModListButton, BaseLib", throwOnError: false);
+        var buttonType = BaseLibReflection.FindType("BaseLib.Config.UI.NModListButton");
         if (buttonType is not null)
         {
             try
@@ -3557,6 +4978,8 @@ internal static class DynamicModConfigType
 
         DefineButtonMethod(type, buttonAttributeType, "OpenManagementButton", "Open ModTheSpire2 Management", nameof(OpenManagementFromConfig));
         DefineButtonMethod(type, buttonAttributeType, "CopyLaunchOptionButton", "Copy Steam Launch Option", nameof(CopyLaunchOptionFromConfig));
+        DefineButtonMethod(type, buttonAttributeType, "OpenMismatchWorkshopLinksButton", "Open Missing Mod Links", nameof(OpenMismatchWorkshopLinksFromConfig));
+        DefineButtonMethod(type, buttonAttributeType, "CopyMismatchReportButton", "Copy Mismatch Report", nameof(CopyMismatchReportFromConfig));
 
         var method = type.DefineMethod(
             "SetupConfigUI",
@@ -3613,6 +5036,16 @@ internal static class DynamicModConfigType
             var open = CreateConfigButton("Open Management");
             open.Pressed += () => ModManagementDialog.Show(optionContainer);
             row.AddChild(open);
+
+            var links = CreateConfigButton("Open Missing Mod Links");
+            links.TooltipText = "Open Workshop links from the latest multiplayer mod mismatch report.";
+            links.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks;
+            row.AddChild(links);
+
+            var copyReport = CreateConfigButton("Copy Mismatch Report");
+            copyReport.TooltipText = "Copy the latest multiplayer mismatch report for feedback.";
+            copyReport.Pressed += MultiplayerMismatchActions.CopyLastReport;
+            row.AddChild(copyReport);
         }
         catch (Exception ex)
         {
@@ -3622,7 +5055,7 @@ internal static class DynamicModConfigType
 
     private static Button CreateConfigButton(string text)
     {
-        var button = UiStyle.CreateButton(text, 220, 46);
+        var button = UiStyle.CreateButton(text, 205, 46);
         button.TooltipText = text;
         return button;
     }
@@ -3638,6 +5071,16 @@ internal static class DynamicModConfigType
     public static void CopyLaunchOptionFromConfig()
     {
         DisplayServer.ClipboardSet(LauncherActions.GetLaunchOption());
+    }
+
+    public static void OpenMismatchWorkshopLinksFromConfig()
+    {
+        MultiplayerMismatchActions.OpenLastWorkshopLinks();
+    }
+
+    public static void CopyMismatchReportFromConfig()
+    {
+        MultiplayerMismatchActions.CopyLastReport();
     }
 }
 
@@ -3665,24 +5108,5 @@ internal static class NativeMessageBox
 
 internal static class CompanionLog
 {
-    public static void Write(string message)
-    {
-        try
-        {
-            var modDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
-            if (string.IsNullOrWhiteSpace(modDir))
-            {
-                return;
-            }
-
-            var dataDir = Path.Combine(modDir, "ModTheSpire2Data");
-            Directory.CreateDirectory(dataDir);
-            File.AppendAllText(
-                Path.Combine(dataDir, "companion.log"),
-                DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff") + " " + message + "\n");
-        }
-        catch
-        {
-        }
-    }
+    public static void Write(string message) => CompanionServices.Log.Write(message);
 }

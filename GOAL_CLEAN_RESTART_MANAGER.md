@@ -4,7 +4,7 @@ Use this file as the authoritative Goal-mode prompt for the next ModTheSpire2 de
 
 ## Goal Statement
 
-Continue ModTheSpire2 development from the latest confirmed usable build, but move away from broad Hot-Apply experimentation.
+Continue ModTheSpire2 development from the latest confirmed usable clean-restart build, and move away from broad Hot-Apply experimentation as the current player-facing workflow.
 
 The new product direction is:
 
@@ -12,16 +12,22 @@ The new product direction is:
 - Players should manage whole-mod enablement before game startup.
 - In-game UI should provide a simple way to close the current game and reopen the launcher.
 - Whole-mod Hot-Apply for loaded content mods, DLL mods, PCK mods, framework mods, UI patch mods, and unknown mods is not part of this stage.
-- The latest Hot-Apply build should be preserved as a future reference blueprint, especially for UI/layout experiments and safety notes, but it should not define the current player-facing workflow.
+- The latest Hot-Apply build should be preserved as a future reference blueprint, especially for UI/layout experiments, safety notes, and possible per-mod configuration ideas, but it should not define the current player-facing workflow.
 
-Current known usable reference build:
+Current clean-manager baseline:
+
+- Snapshot: `dist\snapshots\simple-manager\20260621-2157-clean-restart-docsync`
+- Manual test package: `dist\TestPackages\ModTheSpire2-20260621-2157-clean-restart-docsync`
+- Version: `0.4.0`
+- Clean package size: about `538.69 KB`
+- DLL SHA256: `A60A15BE68ED2486439D07A0BCF727F3B1F7811EEB3422AE8A4015B020922D6D`
+- Launcher SHA256: `7A614860B423DA78FA19A2B889C9395C0F093112D0C98C6CEF8C883237CC9606`
+
+Latest Hot-Apply reference build to preserve, not continue as the default player workflow:
 
 - Snapshot: `dist\snapshots\hot-reload\20260621-2017-top-restart-safe-hotapply`
 - Manual test package: `dist\TestPackages\ModTheSpire2-20260621-2017-top-restart-safe-hotapply`
-- Version: `0.4.0`
-- Clean package size: about `551.92 KB`
 - DLL SHA256: `2EDB315C92E13317AAD27737A6F88A29BBC67C74767BB070DC7FCF313D67DA0E`
-- Launcher SHA256: `7A614860B423DA78FA19A2B889C9395C0F093112D0C98C6CEF8C883237CC9606`
 
 ## Product Philosophy
 
@@ -51,6 +57,7 @@ Allowed:
 - Keep rollback-safe code as internal reference if it does not appear in the normal player workflow.
 - Let individual mods or frameworks expose their own runtime-safe configuration.
 - Learn UI ideas from BaseLib-style configuration pages.
+- Preserve the latest Hot-Apply package and notes as a blueprint for a possible later, separate feature track.
 
 Not allowed in this stage:
 
@@ -59,6 +66,7 @@ Not allowed in this stage:
 - Do not whole-mod disable arbitrary loaded mods in-process.
 - Do not promise that unchecking a loaded mod removes its effects without restart.
 - Do not make BaseLib, RitsuLib, or any other framework a hard dependency for ModTheSpire2.
+- Do not build the main UI around runtime whole-mod apply/disable controls.
 
 `wuwancients` / WuWa Ancients is a useful example of the distinction:
 

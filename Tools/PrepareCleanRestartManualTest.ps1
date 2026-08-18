@@ -28,6 +28,8 @@ $expectedFiles = @(
     "ModTheSpire2.json",
     "ModTheSpire2.pck",
     "ModTheSpire2Launcher.exe",
+    "ModTheSpire2Launcher.sh",
+    "ModTheSpire2Launcher.command",
     "README.md"
 )
 

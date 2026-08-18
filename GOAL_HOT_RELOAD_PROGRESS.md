@@ -1386,3 +1386,59 @@
 - Re-ran Tools\VerifyGitHubSourceExport.ps1 before release: Status OK, file count 80, size 1.15 MB.
 - Committed and pushed GitHub beta branch commit `42c9908` with message `Clarify Steam launch option arguments`.
 - Uploaded Steam Workshop item `3747911678` with ModUploader.exe. Upload completed successfully and processed 127676 bytes.
+
+## 2026-07-03 Button/Profile/Exact-Id Test Build
+
+- Continued from GOAL_NEXT_STAGE_GROUPS_AND_MULTIPLAYER_SYNC.md with the clean restart-manager direction.
+- Did not reintroduce broad Hot-Apply, draggable in-game entry controls, or unfinished grouping UI.
+- Updated the in-game Settings / Mod Settings button path: existing button instances are refreshed, kept enabled, moved to the end of their parent, and raised to ZIndex 5000. New instances are now attached to the NModdingScreen top-level node rather than inside ModsBorder, to reduce Better Mod Menu overlay/input conflicts.
+- Updated launcher profile wording after order moves to say: choose or type a profile name, then Save.
+- Updated the Current settings.save save warning to match the actual live settings label.
+- Added launcher settings self-test coverage for overlapping ids/names: disabled Hina must not be treated as enabled when TenshiHinanawi or HinanawiHinaSkin are enabled, and partial id Tenshi must not match TenshiHinanawi.
+- Removed unfinished Better Mod Menu grouping experiment from the current stable launcher source before packaging this test build.
+- Rebuilt NativeLauncher\ModTheSpire2Launcher.exe with MinGW and ModTheSpire2.dll with Roslyn csc.
+- Verified launcher self-tests: --self-test-settings exit 0 and --self-test-order exit 0.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1 -SkipLive: Status OK, version 0.4.0, clean package 571.44 KB, DLL SHA256 BAE013C9C5E8D6BEB6E197CA2EF4B845A7868C4F82405FD2A06672A94388426A, launcher SHA256 8A068C869A0F30618F2C386FC0B35E5B19EDB62037A1DA56761F475B0D9481B4.
+- Created manual test package: dist\TestPackages\ModTheSpire2-0.4.0-button-profile-idfix-20260703-085306.zip.
+- Remaining required evidence is manual in-game testing with Better Mod Menu enabled: confirm the Settings / Mod Settings button is visible, clickable, and opens the Close and Open Launcher dialog.
+
+## 2026-07-03 Profile Save Self-Test Follow-Up
+
+- Added hidden-list self-test coverage for the real SaveNamedProfile() path.
+- The test creates a typed profile name, saves current order plus enabled selections, saves the same name again with a different enabled selection, reloads the enabled sidecar, and verifies the update replaced the previous enabled state.
+- The test chooses standalone selectable mods so dependency pruning does not make the assertion noisy.
+- Rebuilt NativeLauncher\ModTheSpire2Launcher.exe with MinGW.
+- Verified launcher self-tests: --self-test-order exit 0 with Named profile self-test passed in launcher.log; --self-test-settings exit 0.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1 -SkipLive: Status OK, version 0.4.0, clean package 574.68 KB, DLL SHA256 BAE013C9C5E8D6BEB6E197CA2EF4B845A7868C4F82405FD2A06672A94388426A, launcher SHA256 E1D0E81228522DFD883A690257E9C9CB311D6FA553BB91694479362B929E0088.
+- Created updated manual test package: dist\TestPackages\ModTheSpire2-0.4.0-profile-save-selftest-20260703-090319.zip.
+
+## 2026-07-03 Delayed Button Refresh Follow-Up
+
+- Added delayed in-game Mod Settings button refresh passes at roughly 0.05s, 0.15s, and 0.35s after insertion.
+- Each delayed pass revalidates the NModdingScreen, finds the existing ModTheSpire2 Launcher button, keeps it visible/enabled, moves it to the end of its parent, and keeps ZIndex at 5000.
+- This targets Better Mod Menu or other UI mods adding overlay controls shortly after NModdingScreen._Ready / OnSubmenuOpened.
+- The button still opens only the simple Close and Open Launcher dialog; no draggable entrance UI or broad hot-apply was added.
+- Rebuilt ModTheSpire2.dll with Roslyn csc.
+- Verified launcher self-tests again: --self-test-order exit 0; --self-test-settings exit 0.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1 -SkipLive: Status OK, version 0.4.0, clean package 577.18 KB, DLL SHA256 FB0D0DF59DF8450F4A788CD0641A6A411DA0EDB2C7A62C8B1B4F74D1AC56698A, launcher SHA256 E1D0E81228522DFD883A690257E9C9CB311D6FA553BB91694479362B929E0088.
+- Created updated manual test package: dist\TestPackages\ModTheSpire2-0.4.0-delayed-button-refresh-20260703-090836.zip.
+
+## 2026-07-03 Vanilla Preserve Self-Test Follow-Up
+
+- Added settings self-test coverage for the Vanilla launch invariant.
+- The test writes a fixture settings.save, captures the exact mod_list byte span, calls the real WriteSettings(FALSE) path, and verifies mods_enabled changes from true to false while the mod_list byte span remains unchanged exactly.
+- This proves Vanilla launch preserves per-mod order and enabled state for the next modded launch at the launcher write layer.
+- Rebuilt NativeLauncher\ModTheSpire2Launcher.exe with MinGW.
+- Verified launcher self-tests: --self-test-settings exit 0 with Vanilla launch: preserving mod_list order and per-mod enabled states in launcher.log; --self-test-order exit 0.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1 -SkipLive: Status OK, version 0.4.0, clean package 579.08 KB, DLL SHA256 FB0D0DF59DF8450F4A788CD0641A6A411DA0EDB2C7A62C8B1B4F74D1AC56698A, launcher SHA256 B34F7F63F177A2F7EF115B9C3A309117827BE6E4B4372E8C9733719EF2CA0CAE.
+- Created updated manual test package: dist\TestPackages\ModTheSpire2-0.4.0-vanilla-preserve-selftest-20260703-091436.zip.
+
+## 2026-07-03 Selected-Only Dependency Validation Self-Test
+
+- Added order self-test coverage for the selected-only dependency validation rule.
+- The test creates an intentionally invalid global BaseLib/QuickRestart order while both mods are unchecked, then verifies full dependency validation detects the bad disabled order while selected-only dependency validation allows launch because the conflicting mods are not selected.
+- This protects the launcher from blocking launch because of disabled mods with dependency/order issues.
+- Rebuilt NativeLauncher\ModTheSpire2Launcher.exe with MinGW.
+- Verified launcher self-tests: --self-test-order exit 0 with Selected-only dependency validation self-test passed in launcher.log; --self-test-settings exit 0.
+- Re-ran Tools\VerifyModTheSpire2Package.ps1 -SkipLive: Status OK, version 0.4.0, clean package 581.08 KB, DLL SHA256 FB0D0DF59DF8450F4A788CD0641A6A411DA0EDB2C7A62C8B1B4F74D1AC56698A, launcher SHA256 3B11D11860DC9D01E2E1AB927C2B9E975688891B885AE88D2005CF7C5365A3C2.
+- Created updated manual test package: dist\TestPackages\ModTheSpire2-0.4.0-selected-only-deps-selftest-20260703-092049.zip.

@@ -20,6 +20,7 @@ Expected companion log marker:
 
 ```text
 Initialize ModTheSpire2 0.4.0-clean-restart-ui
+Startup self-tests: mismatchLinks=True resolver=True
 ```
 
 Log file:
@@ -48,7 +49,9 @@ Version : 0.4.0
 1. Start the game from Steam, not by double-clicking `SlayTheSpire2.exe`.
 2. Confirm the game reaches the main menu.
 3. Open `companion.log` and confirm the clean-restart marker appears.
-4. Confirm no `Initialize failed` or `Management dialog failed` line appears after that marker.
+4. Confirm `companion.log` includes `Startup self-tests: mismatchLinks=True resolver=True`.
+5. If either value is `False`, keep the game usable but treat the mismatch helper as needing investigation before release.
+6. Confirm no `Initialize failed` or `Management dialog failed` line appears after that marker.
 
 ## In-Game Management Overlay
 
@@ -64,23 +67,30 @@ Version : 0.4.0
    - `Enabled For This Launch`
    - `Available But Disabled`
    - `Load Order`
-8. Confirm the overlay does not show player-facing Hot-Apply sections or buttons:
+8. Confirm the overlay shows a multiplayer mismatch report status panel.
+9. If no multiplayer mismatch has been recorded, confirm the panel says no report exists yet.
+10. Confirm the bottom buttons include:
+   - `Close and Open Launcher`
+   - `Open Missing Mod Links`
+   - `Copy Mismatch Report`
+   - `Close`
+11. Confirm the overlay does not show player-facing Hot-Apply sections or buttons:
    - no `Runtime Hot-Apply`
    - no `Apply at Main Menu`
    - no `Apply Hot Changes`
-9. Confirm rows show whether each mod is `Loaded`, `Enabled`, or `Disabled`.
-10. Hover rows if possible and confirm tooltips distinguish `Enabled in settings` from `Loaded this session`.
-11. Confirm rows/tooltips for mods with a minimum game version include `requires STS2 >= <version>`.
-12. Resize the game window or test in a smaller window and confirm:
+12. Confirm rows show whether each mod is `Loaded`, `Enabled`, or `Disabled`.
+13. Hover rows if possible and confirm tooltips distinguish `Enabled in settings` from `Loaded this session`.
+14. Confirm rows/tooltips for mods with a minimum game version include `requires STS2 >= <version>`.
+15. Resize the game window or test in a smaller window and confirm:
    - the dialog stays inside the visible game window
    - the mod list scrolls
    - `Close and Open Launcher`, `Close`, and the top-right `X` remain usable
-13. Confirm the overlay closes through:
+16. Confirm the overlay closes through:
    - top-right `X`
    - `Close`
    - clicking the dark backstop outside the panel
    - Esc key
-14. Check `companion.log` for:
+17. Check `companion.log` for:
    - `Management dialog shown`
    - `Load order section shown entries=`
    - `Management dialog closed:`
@@ -96,6 +106,7 @@ Version : 0.4.0
 7. When ready, click `Close and Open Launcher` inside the confirmation dialog.
 8. Confirm the game closes and the launcher opens after the game process exits.
 9. Confirm this flow does not create two running Slay the Spire 2 instances.
+10. If the game was started with an extra renderer flag such as `--rendering-driver opengl3`, confirm launching from the reopened launcher preserves that flag.
 
 ## Launcher Workflow
 
@@ -111,32 +122,63 @@ Version : 0.4.0
 10. Confirm checked mods with satisfied dependencies show `Ready`.
 11. Confirm unchecked selectable mods show `Available`.
 
+## Better Mod Menu Grouping
+
+This feature is read-only and must not modify Better Mod Menu files.
+
+1. If Better Mod Menu is installed, note the last modified time of its mod data folder before opening ModTheSpire2:
+
+```text
+%APPDATA%\SlayTheSpire2\steam\<steamid>\mod_data\BetterModMenu
+```
+
+2. Open the Windows launcher.
+3. Confirm the launcher has a `Group` column.
+4. If Better Mod Menu `ModGroups` or CSV exports exist, confirm known grouped mods show their imported groups.
+5. If Better Mod Menu data is empty or unavailable, confirm mods still show fallback groups such as:
+   - `Dependencies / libraries`
+   - `Gameplay content`
+   - `UI / QoL`
+   - `Cosmetic`
+   - `Utility / tools`
+   - `Unknown`
+6. Confirm grouping does not change the actual load order unless you explicitly move mods.
+7. If Better Mod Menu is installed, confirm its mod data folder was not modified by opening ModTheSpire2.
+
 ## Load Order And Profiles
 
-1. Check one independent mod and leave an adjacent independent mod unchecked.
-2. Move the checked mod up or down.
-3. Confirm the checkbox follows that mod, not the row number.
-4. Select the first mod and click `Move Up`.
-5. Confirm the launcher stays open and the order does not change.
-6. Select the last mod and click `Move Down`.
-7. Confirm the launcher stays open and the order does not change.
-8. Select a mod, enter a natural number in `Row`, and click `Set`.
-9. Confirm the mod moves to that row number.
-10. Confirm values below 1 are treated as 1 and values above the mod count are treated as the last row.
-11. If a move violates dependency order, confirm the launcher repairs it and reports that order was adjusted.
-12. Click `Save Order`.
-13. Confirm both files exist:
+1. Before opening the launcher, change mod enabled state/order once through the game or another mod manager if available.
+2. Open the launcher and confirm the initial order and checked mods match the current `settings.save`.
+3. Confirm dependent mods can appear visually indented under earlier dependencies without changing the `settings.save` order.
+4. Confirm there is no separate `Load Profile` button.
+5. Confirm the profile combo shows `Current settings.save`.
+6. Check one independent mod and leave an adjacent independent mod unchecked.
+7. Move the checked mod up or down.
+8. Confirm the checkbox follows that mod, not the row number.
+9. Select the first mod and click `Move Up`.
+10. Confirm the launcher stays open and the order does not change.
+11. Select the last mod and click `Move Down`.
+12. Confirm the launcher stays open and the order does not change.
+13. Select a mod, enter a natural number in `Row`, and click `Set`.
+14. Confirm the mod moves to that row number.
+15. Confirm values below 1 are treated as 1 and values above the mod count are treated as the last row.
+16. If a move violates dependency order, confirm the launcher repairs it and reports that order was adjusted.
+17. Click `Save`.
+18. Confirm both files exist:
 
 ```text
 ModTheSpire2Data\load-order.txt
 ModTheSpire2Data\enabled-mods.txt
 ```
 
-14. Save a named profile with custom order and selected mods.
-15. Change both order and checked mods.
-16. Load the named profile.
-17. Confirm both order and checked mods are restored.
-18. Confirm the profile sidecar exists:
+19. Try to save while the combo says `Current settings.save`; confirm the launcher asks for a profile name instead of creating a default profile.
+20. Type a named profile with custom order and selected mods, then click `Save`.
+21. Change both order and checked mods.
+22. Select the named profile from the profile combo.
+23. Confirm both order and checked mods are restored immediately.
+24. Select `Current settings.save` from the combo.
+25. Confirm the list reloads from `settings.save`.
+26. Confirm the profile sidecar exists:
 
 ```text
 ModTheSpire2Data\order-profiles\<profile>.enabled.txt
@@ -147,8 +189,11 @@ ModTheSpire2Data\order-profiles\<profile>.enabled.txt
 1. Select some mods and save the order/profile.
 2. Click `Vanilla`.
 3. After the game starts, close it and start the launcher again.
-4. Confirm the previously saved checked mods are restored.
-5. Confirm Vanilla is one-time and does not clear `enabled-mods.txt`.
+4. Confirm the launcher restores the previously selected mod ids, even if v0.111 rewrote the game's `settings.save` entries as enabled.
+5. Confirm the custom load order from before Vanilla is restored, rather than the game's default order.
+6. Confirm `settings.save` used for the Vanilla launch contains disabled `mod_list` entries and preserves their order.
+7. Confirm saved named profiles still exist and can be selected from the profile combo.
+8. Click `Launch Selected` and confirm the pending Vanilla recovery state is cleared and only the selected mods are enabled in the restored order.
 
 ## Launch Selected
 
@@ -156,7 +201,31 @@ ModTheSpire2Data\order-profiles\<profile>.enabled.txt
 2. Click `Launch Selected`.
 3. Confirm the game starts with the selected mods.
 4. Close the game.
-5. Reopen the launcher and confirm the same selected mods are restored.
+5. Reopen the launcher and confirm the same selected mods are shown because they are now in `settings.save`.
+
+## Multiplayer Mismatch Helper
+
+This helper is read-only and experimental. It must not bypass multiplayer checks or auto-subscribe Workshop items.
+
+1. Prepare a multiplayer join attempt where the host and local player have different gameplay-relevant mod lists.
+2. Join the host and trigger the game's mod mismatch error.
+3. Confirm the game's error text includes a `ModTheSpire2 help` section.
+4. Confirm the help text explains that the report is saved at:
+
+```text
+ModTheSpire2Data\multiplayer-mismatch-last.txt
+```
+
+5. Confirm the report file exists and includes:
+   - `ModTheSpire2 multiplayer mismatch report`
+   - missing local or host mods if the game exposed them
+   - Workshop links when ModTheSpire2 could map them
+   - `Raw NetErrorInfo`
+6. Open ModTheSpire2 Management.
+7. Confirm the mismatch status panel shows the latest report time and Workshop link count.
+8. Click `Copy Mismatch Report` and confirm the report text is copied to the clipboard.
+9. Click `Open Missing Mod Links` and confirm it opens only links from the latest report.
+10. Confirm this flow does not subscribe automatically and does not force the join to continue.
 
 ## Package Content
 
@@ -167,6 +236,8 @@ ModTheSpire2.dll
 ModTheSpire2.json
 ModTheSpire2.pck
 ModTheSpire2Launcher.exe
+ModTheSpire2Launcher.sh
+ModTheSpire2Launcher.command
 README.md
 ```
 
@@ -181,6 +252,35 @@ old Lite folders
 temporary build output
 ```
 
+## Linux / macOS Script Smoke Tests
+
+These first-pass launchers are native Steam script entry points, not full GUI replacements.
+
+1. On Linux or Steam Deck, set the launch option to:
+
+```text
+"/path/to/ModTheSpire2Launcher.sh" -- %command%
+```
+
+2. On macOS, set the launch option to:
+
+```text
+"/path/to/ModTheSpire2Launcher.command" -- %command%
+```
+
+3. If needed, make the scripts executable:
+
+```sh
+chmod +x "/path/to/ModTheSpire2Launcher.sh"
+chmod +x "/path/to/ModTheSpire2Launcher.command"
+```
+
+4. Confirm the script reaches a menu or a clear actionable diagnostic error.
+5. Confirm the menu offers Vanilla, saved enabled mods, named profiles if present, diagnostics, and quit.
+6. Confirm launching Vanilla or saved enabled mods creates a timestamped `settings.save` backup in `ModTheSpire2Data/settings-backups`.
+7. Confirm the game starts once through the original Steam command.
+8. Confirm extra game launch arguments after `%command%` still reach the game where Steam supports them.
+
 ## Report Back
 
 Send back:
@@ -188,5 +288,6 @@ Send back:
 - Whether each section appeared.
 - Any crash or missing button.
 - Whether the launcher opened correctly after `Close and Open Launcher`.
+- Whether Linux/macOS scripts reached the menu or the exact diagnostic error shown.
 - The last 80 lines of `companion.log`.
 - The contents of `ModTheSpire2Data\load-order.txt` if load-order saving was tested.

@@ -58,13 +58,13 @@ if ($LASTEXITCODE -ne 0) {
     Fail "AnalyzeModManifests.ps1 failed"
 }
 $manifestAnalysisText = ($manifestAnalysis | Out-String)
-if (-not ($manifestAnalysisText -match "QuickRestart" -and $manifestAnalysisText -match "BaseLib min_version=3.3.0")) {
-    Fail "Manifest analysis did not capture QuickRestart dependency version constraint"
+if (-not ($manifestAnalysisText -match "(?s)Id\s+:\s+QuickRestart.*?DependencyConstraints\s+:\s+dependencies=BaseLib min_version=(?:v)?[0-9]+\.[0-9]+\.[0-9]+")) {
+    Fail "Manifest analysis did not capture the current QuickRestart dependency version constraint"
 }
 if (-not ($manifestAnalysisText -match "wuwancients" -and $manifestAnalysisText -match "BaseLib min_version=v3.2.0")) {
     Fail "Manifest analysis did not capture wuwancients dependency version constraint"
 }
-if (-not ($manifestAnalysisText -match "ActsFromThePast" -and $manifestAnalysisText -match "BaseLib min_version=v3.2.1")) {
+if (-not ($manifestAnalysisText -match "ActsFromThePast" -and $manifestAnalysisText -match "BaseLib min_version=v[0-9]+\.[0-9]+\.[0-9]+")) {
     Fail "Manifest analysis did not capture ActsFromThePast dependency version constraint"
 }
 if (-not ($manifestAnalysisText -match "STS2-RitsuLib" -and $manifestAnalysisText -match "0.107.1")) {
@@ -76,6 +76,7 @@ if (-not ($manifestAnalysisText -match "wuwancients" -and $manifestAnalysisText 
 
 $companionSource = Get-Content (Join-Path $root "ModTheSpire2Companion\ModTheSpire2Entry.HotManage.cs") -Raw
 $classifierSource = Get-Content (Join-Path $root "Tools\ClassifyModsForHotApply.ps1") -Raw
+$launcherSource = Get-Content (Join-Path $root "NativeLauncher\ModTheSpire2Launcher.c") -Raw
 if (-not ($companionSource.Contains("KnownMainMenuContentMods") -and $companionSource.Contains("not proof that toggling the loaded mod itself is safe"))) {
     Fail "Companion source no longer documents why wuwancients is not an entire-mod Hot-Apply allow-list entry"
 }
@@ -97,14 +98,60 @@ if (-not ($companionSource.Contains("RestartDialogMetrics") -and $companionSourc
 if (-not ($companionSource.Contains("CreateIconButton") -and $companionSource.Contains("Close ModTheSpire2 management and return to the game.") -and $companionSource.Contains("Close the game and open the launcher to change restart-required mods.") -and $companionSource.Contains("Enabled For This Launch") -and $companionSource.Contains("Available But Disabled"))) {
     Fail "Companion source no longer exposes the clean restart management controls"
 }
+if (-not ($companionSource.Contains("BuildRestartLauncherArguments") -and $companionSource.Contains("System.Environment.GetCommandLineArgs()") -and $companionSource.Contains('args += " -- " + QuoteArg(current[0])') -and $companionSource.Contains("renderer flags such as --rendering-driver opengl3 are preserved"))) {
+    Fail "Companion source no longer forwards the current game command line to the launcher restart flow"
+}
+if (-not ($companionSource.Contains("MultiplayerMismatchErrorPatch") -and $companionSource.Contains("NetErrorInfo") -and $companionSource.Contains("GetErrorString") -and $companionSource.Contains("missingModsOnLocal") -and $companionSource.Contains("missingModsOnHost") -and $companionSource.Contains("multiplayer-mismatch-last.txt"))) {
+    Fail "Companion source no longer exposes the read-only multiplayer mismatch helper"
+}
+if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource.Contains("public static bool SelfTest()") -and $companionSource.Contains("https://steamcommunity.com/sharedfiles/filedetails/?id=") -and $companionSource.Contains("steam://url/CommunityFilePage/") -and $companionSource.Contains("Known local/subscribed mod index"))) {
+    Fail "Companion source no longer maps multiplayer mismatch entries to Workshop links"
+}
+if (-not ($companionSource.Contains("MultiplayerMismatchActions") -and $companionSource.Contains("Open Missing Mod Links") -and $companionSource.Contains("MaxOpenLinks") -and $companionSource.Contains("ExtractWorkshopLinks") -and $companionSource.Contains("CommunityFilePage") -and $companionSource.Contains("OpenMismatchWorkshopLinksFromConfig"))) {
+    Fail "Companion source no longer exposes a safe way to open mismatch Workshop links"
+}
+if (-not ($companionSource.Contains("RunStartupSelfTests") -and $companionSource.Contains("MultiplayerMismatchActions.SelfTest()") -and $companionSource.Contains("MismatchModResolver.SelfTest()") -and $companionSource.Contains("Startup self-tests: mismatchLinks="))) {
+    Fail "Companion source no longer runs lightweight mismatch helper startup self-tests"
+}
+if (-not ($companionSource.Contains("Copy Mismatch Report") -and $companionSource.Contains("CopyLastReport") -and $companionSource.Contains("DisplayServer.ClipboardSet(report)") -and $companionSource.Contains("CopyMismatchReportFromConfig"))) {
+    Fail "Companion source no longer exposes a safe way to copy mismatch reports"
+}
+if (-not ($companionSource.Contains("A full report is saved to ModTheSpire2Data\\multiplayer-mismatch-last.txt") -and $companionSource.Contains("Open ModTheSpire2 Management to use Open Missing Mod Links or Copy Mismatch Report"))) {
+    Fail "Multiplayer mismatch helper no longer tells players where to find/report mismatch details"
+}
+if (-not ($companionSource.Contains("CreateMismatchReportPanel") -and $companionSource.Contains("Latest multiplayer mismatch report") -and $companionSource.Contains("Workshop links found") -and $companionSource.Contains("GetLastReportStatus"))) {
+    Fail "Management dialog no longer shows multiplayer mismatch report status"
+}
+if (-not ($companionSource.Contains('openMismatchLinks.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks') -and $companionSource.Contains('copyMismatchReport.Pressed += MultiplayerMismatchActions.CopyLastReport'))) {
+    Fail "Management dialog no longer exposes multiplayer mismatch report actions"
+}
 if ($companionSource.Contains("Apply Hot Changes") -or $companionSource.Contains("Apply selected Runtime Hot-Apply and Apply at Main Menu changes.")) {
     Fail "Companion source still exposes player-facing Hot-Apply controls in the clean restart UI"
 }
-if (-not ($companionSource.Contains("FindLatestSettingsFile") -and $companionSource.Contains("EnumerateSettingsSearchRoots") -and $companionSource.Contains("OrderByDescending(file => file.LastWriteTimeUtc)") -and $companionSource.Contains("Hot apply backup created:"))) {
-    Fail "Companion source no longer selects the newest settings.save before Hot-Apply backup"
+if ($companionSource.Contains("ForceJoin") -or $companionSource.Contains("BypassModMismatch") -or $companionSource.Contains("SubscribeItem")) {
+    Fail "Companion source appears to expose force-join, mismatch-bypass, or auto-subscribe behavior"
+}
+if (-not ($companionSource.Contains("Whole-mod changes require closing the game and reopening the launcher.") -and $companionSource.Contains("Close and Open Launcher") -and $companionSource.Contains("BuildRestartLauncherArguments"))) {
+    Fail "Companion source no longer preserves the clean restart-manager workflow"
 }
 if (-not ($classifierSource.Contains("invalid manifest; restart required") -and $classifierSource.Contains("GetFileNameWithoutExtension") -and $classifierSource.Contains("Test-PayloadFileInModDir"))) {
     Fail "Classifier source no longer has the conservative invalid-manifest fallback"
+}
+if (-not ($launcherSource.Contains("ApplyBetterModMenuGroupsFromJson") -and $launcherSource.Contains("mod_data\\BetterModMenu\\mod_profiles.json") -and $launcherSource.Contains("ApplyBetterModMenuGroupsFromCsvExports") -and $launcherSource.Contains("ApplyFallbackGroup") -and $launcherSource.Contains("group=%ls"))) {
+    Fail "Launcher source no longer preserves optional Better Mod Menu grouping with fallback diagnostics"
+}
+if (-not ($launcherSource.Contains("swprintf(path, _countof(path), L`"%ls\\mod_data\\BetterModMenu\\mod_profiles.json`", userRoot);") -and $launcherSource.Contains("char* json = ReadFileBytes(path, &size);"))) {
+    Fail "Launcher source no longer reads Better Mod Menu profile JSON through the read-only file path"
+}
+if ($launcherSource -match "WriteFileBytes\([^)]*BetterModMenu|CreateFileW\([^)]*BetterModMenu|DeleteFileW\([^)]*BetterModMenu|MoveFileW\([^)]*BetterModMenu|CopyFileW\([^)]*BetterModMenu") {
+    Fail "Launcher source appears to write, delete, move, or copy real Better Mod Menu files; grouping import must remain read-only"
+}
+if (-not ($launcherSource.Contains("JoinPath(csvPath, _countof(csvPath), dataDir, L`"better-mod-menu-group-self-test.csv`");") -and $launcherSource.Contains("DeleteFileW(csvPath);"))) {
+    Fail "Launcher grouping self-test no longer confines temporary CSV writes to ModTheSpire2Data"
+}
+
+if (-not ($launcherSource.Contains("vanilla-load-order.txt") -and $launcherSource.Contains("SaveOrderToPath(vanillaOrderPath)") -and $launcherSource.Contains("LoadOrderFromPathCore(vanillaOrderPath, FALSE)") -and $launcherSource.Contains("ClearVanillaRecoveryState"))) {
+    Fail "Launcher no longer snapshots and restores load order around a Vanilla launch"
 }
 
 $expectedFiles = @(
@@ -112,6 +159,8 @@ $expectedFiles = @(
     "ModTheSpire2.json",
     "ModTheSpire2.pck",
     "ModTheSpire2Launcher.exe",
+    "ModTheSpire2Launcher.sh",
+    "ModTheSpire2Launcher.command",
     "README.md"
 )
 
@@ -151,6 +200,46 @@ foreach ($file in $expectedFiles) {
         if ($cleanHash -ne $liveHash) {
             Fail "$file differs between clean package and live test folder"
         }
+    }
+}
+
+function Assert-LfScript([string]$path) {
+    $bytes = [System.IO.File]::ReadAllBytes($path)
+    for ($i = 0; $i -lt $bytes.Length - 1; $i++) {
+        if ($bytes[$i] -eq 13 -and $bytes[$i + 1] -eq 10) {
+            Fail "Script uses CRLF line endings instead of LF: $path"
+        }
+    }
+}
+
+$linuxScript = Join-Path $clean "ModTheSpire2Launcher.sh"
+$macScript = Join-Path $clean "ModTheSpire2Launcher.command"
+Assert-LfScript $linuxScript
+Assert-LfScript $macScript
+$linuxScriptText = Get-Content -LiteralPath $linuxScript -Raw
+$macScriptText = Get-Content -LiteralPath $macScript -Raw
+if (-not $linuxScriptText.StartsWith("#!/usr/bin/env bash")) {
+    Fail "Linux launcher script is missing the bash shebang"
+}
+if (-not $macScriptText.StartsWith("#!/bin/sh")) {
+    Fail "macOS command wrapper is missing the sh shebang"
+}
+if (-not ($macScriptText.Contains("ModTheSpire2Launcher.sh") -and $macScriptText.Contains('exec /usr/bin/env bash'))) {
+    Fail "macOS command wrapper no longer delegates to the shared shell launcher"
+}
+foreach ($needle in @(
+    'settings-backups',
+    'cp -p "$settings_file" "$backup"',
+    'Launch Vanilla once',
+    'Launch saved enabled mods',
+    'Diagnostics',
+    'Configure Steam Launch Options to call this script with -- %command%',
+    'steam://rungameid/$APP_ID',
+    'SELECTED_IDS_BLOB',
+    'DISCOVERED_MODS_BLOB'
+)) {
+    if (-not $linuxScriptText.Contains($needle)) {
+        Fail "Linux/macOS shared script is missing expected behavior marker: $needle"
     }
 }
 
@@ -553,7 +642,7 @@ if (Test-Path -LiteralPath $launcherData) {
     Remove-Item -LiteralPath $resolvedRuntime -Recurse -Force
 }
 
-$aliasFixture = Join-Path $launcherData "launcher-alias-fixture"
+$aliasFixture = Join-Path ([System.IO.Path]::GetTempPath()) ("ModTheSpire2LauncherAliasFixture-" + [System.Guid]::NewGuid().ToString("N"))
 $fakeGameDir = Join-Path $aliasFixture "steamapps\common\Slay the Spire 2"
 $fakeModsDir = Join-Path $fakeGameDir "mods"
 $fakeWorkshopDir = Join-Path $aliasFixture "steamapps\workshop\content\2868840"
@@ -768,9 +857,11 @@ if (-not $aliasSelfTestLogRaw.Contains("Order self-test load_before repair passe
 
 if (Test-Path -LiteralPath $aliasFixture) {
     $resolvedFixture = (Resolve-Path -LiteralPath $aliasFixture).Path
-    $resolvedClean = (Resolve-Path -LiteralPath $clean).Path
-    if (-not $resolvedFixture.StartsWith($resolvedClean, [System.StringComparison]::OrdinalIgnoreCase)) {
-        Fail "Refusing to clean alias fixture outside clean package: $resolvedFixture"
+    $resolvedTemp = (Resolve-Path -LiteralPath ([System.IO.Path]::GetTempPath())).Path
+    $fixtureName = Split-Path -Leaf $resolvedFixture
+    if (-not $resolvedFixture.StartsWith($resolvedTemp, [System.StringComparison]::OrdinalIgnoreCase) -or
+        -not $fixtureName.StartsWith("ModTheSpire2LauncherAliasFixture-", [System.StringComparison]::OrdinalIgnoreCase)) {
+        Fail "Refusing to clean unexpected alias fixture path: $resolvedFixture"
     }
     Remove-Item -LiteralPath $resolvedFixture -Recurse -Force
 }

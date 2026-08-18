@@ -1,16 +1,30 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>net9.0</TargetFramework>
     <AssemblyName>ModTheSpire2</AssemblyName>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="CompanionServices.cs" />
+    <Compile Include="ModTheSpire2Entry.HotManage.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="sts2">
       <HintPath>E:\SteamLibrary\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64\sts2.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="GodotSharp">
+      <HintPath>E:\SteamLibrary\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64\GodotSharp.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="0Harmony">
+      <HintPath>E:\SteamLibrary\steamapps\common\Slay the Spire 2\data_sts2_windows_x86_64\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
   </ItemGroup>
