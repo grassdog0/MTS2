@@ -65,10 +65,25 @@ append_unique() {
 }
 
 STEAM_LIBRARY_DIRS=()
+WORKSHOP_DIRS=()
+SCAN_REPORTS=()
+SCAN_CANDIDATES=0
+SCAN_ACCEPTED=0
+SCAN_SKIPPED=0
+SCAN_ERRORS=0
+SCAN_DUPLICATES=0
+
+canonical_dir() {
+  (cd -P "$1" 2>>"$LOG_FILE" && pwd -P)
+}
+
 add_steam_library() {
   local dir="$1"
   [ -n "$dir" ] || return 0
   [ -d "$dir/steamapps" ] || return 0
+  local original="$dir"
+  dir="$(canonical_dir "$dir")" || return 0
+  log "Steam library path: $original -> $dir"
   local item
   for item in "${STEAM_LIBRARY_DIRS[@]:-}"; do
     [ "$item" = "$dir" ] && return 0
@@ -77,6 +92,11 @@ add_steam_library() {
 }
 
 discover_steam_libraries() {
+  local ancestor="$APP_DIR"
+  while [ "$ancestor" != / ] && [ -n "$ancestor" ]; do
+    add_steam_library "$ancestor"
+    ancestor="$(dirname "$ancestor")"
+  done
   case "$(uname -s)" in
     Darwin)
       add_steam_library "$HOME/Library/Application Support/Steam"
@@ -88,8 +108,10 @@ discover_steam_libraries() {
       ;;
   esac
 
-  local libfile line path base
-  for base in "${STEAM_LIBRARY_DIRS[@]:-}"; do
+  local libfile line path base index=0
+  while [ "$index" -lt "${#STEAM_LIBRARY_DIRS[@]}" ]; do
+    base="${STEAM_LIBRARY_DIRS[$index]}"
+    index=$((index + 1))
     libfile="$base/steamapps/libraryfolders.vdf"
     [ -f "$libfile" ] || continue
     while IFS= read -r line; do
@@ -138,23 +160,34 @@ find_game_dir() {
   for lib in "${STEAM_LIBRARY_DIRS[@]:-}"; do
     candidate="$lib/steamapps/common/Slay the Spire 2"
     if [ -d "$candidate" ]; then
-      printf '%s\n' "$candidate"
+      canonical_dir "$candidate"
       return 0
     fi
   done
   return 1
 }
 
-find_workshop_dir() {
+discover_workshop_dirs() {
+  WORKSHOP_DIRS=()
+  local ancestor="$GAME_DIR"
+  while [ "$ancestor" != / ] && [ -n "$ancestor" ]; do
+    add_steam_library "$ancestor"
+    ancestor="$(dirname "$ancestor")"
+  done
   local lib candidate
   for lib in "${STEAM_LIBRARY_DIRS[@]:-}"; do
     candidate="$lib/steamapps/workshop/content/$APP_ID"
     if [ -d "$candidate" ]; then
-      printf '%s\n' "$candidate"
-      return 0
+      local resolved existing seen=0
+      resolved="$(canonical_dir "$candidate")" || continue
+      log "Workshop path: $candidate -> $resolved"
+      for existing in "${WORKSHOP_DIRS[@]:-}"; do
+        [ "$existing" = "$resolved" ] && seen=1
+      done
+      [ "$seen" = 1 ] || WORKSHOP_DIRS+=("$resolved")
     fi
   done
-  return 1
+  return 0
 }
 
 find_settings_file() {
@@ -189,37 +222,47 @@ find_settings_file() {
   [ -n "$newest" ] && printf '%s\n' "$newest"
 }
 
-json_value() {
-  local file="$1"
-  local key="$2"
-  perl -0777 -e '
-    my ($key, $file) = @ARGV;
-    open my $fh, "<", $file or exit 0;
-    local $/;
-    my $json = <$fh>;
-    if (/"\Q$key\E"\s*:\s*"((?:\\.|[^"\\])*)"/s) {
-      my $v = $1;
-      $v =~ s/\\"/"/g;
-      $v =~ s/\\\\/\\/g;
-      print $v;
-      exit;
-    }
-  ' "$key" "$file" 2>/dev/null || true
+check_json_runtime() {
+  command -v perl >/dev/null 2>&1 || die "Perl is unavailable. Diagnostics cannot parse mod manifests."
+  perl -MJSON::PP -e 'exit 0' 2>>"$LOG_FILE" ||
+    die "Perl JSON::PP is unavailable. See launcher-script.log for the runtime error."
 }
 
 manifest_identity() {
-  local file="$1"
-  local id name
-  id="$(json_value "$file" id)"
-  if [ -z "$id" ]; then
-    id="$(json_value "$file" pck_name)"
-  fi
-  [ -n "$id" ] || return 1
-  name="$(json_value "$file" name)"
-  [ -n "$name" ] || name="$id"
-  printf '%s\t%s\n' "$id" "$name"
+  perl -MJSON::PP -MFile::Basename=basename,dirname -e '
+    use strict;
+    use warnings;
+    my $file = shift;
+    open my $fh, "<:raw", $file or do { warn "Cannot read manifest $file: $!\n"; exit 3; };
+    local $/;
+    my $bytes = <$fh>;
+    $bytes =~ s/^\xEF\xBB\xBF//;
+    my $doc = eval { JSON::PP::decode_json($bytes) };
+    if ($@) { warn "Invalid manifest JSON: $file\n"; exit 3; }
+    exit 2 unless ref($doc) eq "HASH";
+    my $id = $doc->{id};
+    $id = $doc->{pck_name} unless defined($id) && !ref($id) && length($id);
+    exit 2 unless defined($id) && !ref($id) && length($id);
+    if ($id =~ /[\x00-\x1f\x7f\/\\\\]/) { warn "Unsupported manifest id: $file\n"; exit 3; }
+    my $base = basename($file);
+    my $dir = dirname($file);
+    if ($base =~ /\.manifest$/i) {
+      exit 2 unless defined($doc->{id}) && !ref($doc->{id}) && length($doc->{id});
+    } else {
+      my $identity_file = lc($base) eq "mod_manifest.json" || lc($base) eq lc("$id.json");
+      my $metadata = defined($doc->{name}) && !ref($doc->{name}) &&
+        defined($doc->{version}) && !ref($doc->{version});
+      my $payload = -f "$dir/$id.dll" || -f "$dir/$id.pck";
+      exit 2 unless $identity_file || $metadata || $payload ||
+        exists($doc->{has_dll}) || exists($doc->{has_pck}) || exists($doc->{pck_name});
+    }
+    my $name = $doc->{name};
+    $name = $id unless defined($name) && !ref($name) && length($name);
+    $name =~ s/[\x00-\x1f\x7f]/ /g;
+    binmode STDOUT, ":encoding(UTF-8)";
+    print "$id\t$name\n";
+  ' "$1" 2>>"$LOG_FILE"
 }
-
 MOD_IDS=()
 MOD_NAMES=()
 MOD_SOURCES=()
@@ -232,7 +275,7 @@ add_mod() {
   local source_key="$4"
   local existing
   for existing in "${MOD_IDS[@]:-}"; do
-    [ "$existing" = "$id" ] && return 0
+    [ "$existing" = "$id" ] && return 1
   done
   MOD_IDS+=("$id")
   MOD_NAMES+=("$name")
@@ -244,28 +287,52 @@ scan_mod_root() {
   local root="$1"
   local source="$2"
   [ -d "$root" ] || return 0
-  local manifest rel dir ident id name source_key
+  root="$(canonical_dir "$root")" || return 0
+  local manifest ident id name source_key status
+  local candidates=0 accepted=0 skipped=0 errors=0 duplicates=0
+  local inventory
+  inventory="$(mktemp "$DATA_DIR/discovery.XXXXXX")" || die "Could not create discovery file."
+  if ! find -L "$root" -type d \( -name ModTheSpire2Data -o -name .git \) -prune -o \
+       -type f \( -iname '*.json' -o -iname '*.manifest' \) -print0 >"$inventory" 2>>"$LOG_FILE"; then
+    errors=$((errors + 1))
+    log "Scan incomplete (permissions or symlink loop): $root"
+  fi
   while IFS= read -r -d '' manifest; do
+    candidates=$((candidates + 1))
     case "$manifest" in
-      */ModTheSpire2Data/*) continue ;;
-      */config.json) continue ;;
+      */config.json) skipped=$((skipped + 1)); log "Skipped config: $manifest"; continue ;;
     esac
-    ident="$(manifest_identity "$manifest" || true)"
-    [ -n "$ident" ] || continue
+    if ident="$(manifest_identity "$manifest")"; then
+      :
+    else
+      status=$?
+      if [ "$status" = 2 ]; then
+        skipped=$((skipped + 1)); log "Not a mod manifest: $manifest"
+      else
+        errors=$((errors + 1)); log "Manifest read/parse failed (exit $status): $manifest"
+      fi
+      continue
+    fi
     id="${ident%%	*}"
     name="${ident#*	}"
-    dir="$(dirname "$manifest")"
     source_key="mods_directory"
     if [ "$source" = "Workshop" ]; then
-      rel="${dir#"$root"/}"
       source_key="steam_workshop"
-      case "$rel" in
-        */*) ;;
-        *) ;;
-      esac
     fi
-    add_mod "$id" "$name" "$source" "$source_key"
-  done < <(find "$root" -type f \( -name '*.json' -o -name '*.manifest' \) -print0 2>/dev/null)
+    if add_mod "$id" "$name" "$source" "$source_key"; then
+      accepted=$((accepted + 1)); log "Discovered $source mod: $id ($manifest)"
+    else
+      duplicates=$((duplicates + 1)); log "Duplicate mod id skipped: $id ($manifest)"
+    fi
+  done < <(perl -0e 'print sort <>' "$inventory")
+  rm -f -- "$inventory"
+  SCAN_CANDIDATES=$((SCAN_CANDIDATES + candidates))
+  SCAN_ACCEPTED=$((SCAN_ACCEPTED + accepted))
+  SCAN_SKIPPED=$((SCAN_SKIPPED + skipped))
+  SCAN_ERRORS=$((SCAN_ERRORS + errors))
+  SCAN_DUPLICATES=$((SCAN_DUPLICATES + duplicates))
+  SCAN_REPORTS+=("$source: $root | candidates=$candidates accepted=$accepted skipped=$skipped errors=$errors duplicates=$duplicates")
+  log "${SCAN_REPORTS[${#SCAN_REPORTS[@]}-1]}"
 }
 
 load_lines() {
@@ -431,20 +498,30 @@ show_diagnostics() {
   printf 'Script folder: %s\n' "$APP_DIR"
   printf 'Game folder: %s\n' "${GAME_DIR:-not found}"
   printf 'Settings file: %s\n' "${SETTINGS_FILE:-not found}"
-  printf 'Workshop folder: %s\n' "${WORKSHOP_DIR:-not found}"
+  printf 'Workshop folders (canonical):\n'
+  printf '  %s\n' "${WORKSHOP_DIRS[@]:-not found}"
   printf 'Discovered mods: %s\n' "${#MOD_IDS[@]}"
+  printf 'Manifest candidates: %s; accepted: %s; skipped: %s; errors: %s; duplicates: %s\n' \
+    "$SCAN_CANDIDATES" "$SCAN_ACCEPTED" "$SCAN_SKIPPED" "$SCAN_ERRORS" "$SCAN_DUPLICATES"
+  printf '  %s\n' "${SCAN_REPORTS[@]:-no scan roots}"
+  if [ "$SCAN_CANDIDATES" -gt 0 ] && [ "${#MOD_IDS[@]}" -eq 0 ]; then
+    printf 'Manifest files exist but none were recognized. Check parse/skip reasons in the log.\n'
+  fi
   printf 'Log file: %s\n' "$LOG_FILE"
 }
 
+check_json_runtime
 discover_steam_libraries
 GAME_DIR="$(find_game_dir || true)"
 [ -n "$GAME_DIR" ] || die "Could not find the native $APP_NAME folder."
 LOCAL_MODS_DIR="$GAME_DIR/mods"
-WORKSHOP_DIR="$(find_workshop_dir || true)"
+discover_workshop_dirs
 SETTINGS_FILE="$(find_settings_file || true)"
 
 scan_mod_root "$LOCAL_MODS_DIR" "Local"
-[ -n "$WORKSHOP_DIR" ] && scan_mod_root "$WORKSHOP_DIR" "Workshop"
+for workshop in "${WORKSHOP_DIRS[@]:-}"; do
+  [ -n "$workshop" ] && scan_mod_root "$workshop" "Workshop"
+done
 apply_order_file "$DATA_DIR/load-order.txt"
 
 printf '\nModTheSpire2 lightweight launcher\n'

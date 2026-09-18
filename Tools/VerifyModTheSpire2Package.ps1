@@ -101,30 +101,10 @@ if (-not ($companionSource.Contains("CreateIconButton") -and $companionSource.Co
 if (-not ($companionSource.Contains("BuildRestartLauncherArguments") -and $companionSource.Contains("System.Environment.GetCommandLineArgs()") -and $companionSource.Contains('args += " -- " + QuoteArg(current[0])') -and $companionSource.Contains("renderer flags such as --rendering-driver opengl3 are preserved"))) {
     Fail "Companion source no longer forwards the current game command line to the launcher restart flow"
 }
-if (-not ($companionSource.Contains("MultiplayerMismatchErrorPatch") -and $companionSource.Contains("NetErrorInfo") -and $companionSource.Contains("GetErrorString") -and $companionSource.Contains("missingModsOnLocal") -and $companionSource.Contains("missingModsOnHost") -and $companionSource.Contains("multiplayer-mismatch-last.txt"))) {
-    Fail "Companion source no longer exposes the read-only multiplayer mismatch helper"
+foreach ($removed in @("MultiplayerMismatchErrorPatch", "NetErrorInfo", "ModTheSpire2 help", "CreateMismatchReportPanel", "Open Missing Mod Links", "Copy Mismatch Report", "multiplayer-mismatch-last.txt")) {
+    if ($companionSource.Contains($removed)) { Fail "Removed multiplayer error helper is still present: $removed" }
 }
-if (-not ($companionSource.Contains("MismatchModResolver") -and $companionSource.Contains("public static bool SelfTest()") -and $companionSource.Contains("https://steamcommunity.com/sharedfiles/filedetails/?id=") -and $companionSource.Contains("steam://url/CommunityFilePage/") -and $companionSource.Contains("Known local/subscribed mod index"))) {
-    Fail "Companion source no longer maps multiplayer mismatch entries to Workshop links"
-}
-if (-not ($companionSource.Contains("MultiplayerMismatchActions") -and $companionSource.Contains("Open Missing Mod Links") -and $companionSource.Contains("MaxOpenLinks") -and $companionSource.Contains("ExtractWorkshopLinks") -and $companionSource.Contains("CommunityFilePage") -and $companionSource.Contains("OpenMismatchWorkshopLinksFromConfig"))) {
-    Fail "Companion source no longer exposes a safe way to open mismatch Workshop links"
-}
-if (-not ($companionSource.Contains("RunStartupSelfTests") -and $companionSource.Contains("MultiplayerMismatchActions.SelfTest()") -and $companionSource.Contains("MismatchModResolver.SelfTest()") -and $companionSource.Contains("Startup self-tests: mismatchLinks="))) {
-    Fail "Companion source no longer runs lightweight mismatch helper startup self-tests"
-}
-if (-not ($companionSource.Contains("Copy Mismatch Report") -and $companionSource.Contains("CopyLastReport") -and $companionSource.Contains("DisplayServer.ClipboardSet(report)") -and $companionSource.Contains("CopyMismatchReportFromConfig"))) {
-    Fail "Companion source no longer exposes a safe way to copy mismatch reports"
-}
-if (-not ($companionSource.Contains("A full report is saved to ModTheSpire2Data\\multiplayer-mismatch-last.txt") -and $companionSource.Contains("Open ModTheSpire2 Management to use Open Missing Mod Links or Copy Mismatch Report"))) {
-    Fail "Multiplayer mismatch helper no longer tells players where to find/report mismatch details"
-}
-if (-not ($companionSource.Contains("CreateMismatchReportPanel") -and $companionSource.Contains("Latest multiplayer mismatch report") -and $companionSource.Contains("Workshop links found") -and $companionSource.Contains("GetLastReportStatus"))) {
-    Fail "Management dialog no longer shows multiplayer mismatch report status"
-}
-if (-not ($companionSource.Contains('openMismatchLinks.Pressed += MultiplayerMismatchActions.OpenLastWorkshopLinks') -and $companionSource.Contains('copyMismatchReport.Pressed += MultiplayerMismatchActions.CopyLastReport'))) {
-    Fail "Management dialog no longer exposes multiplayer mismatch report actions"
-}
+
 if ($companionSource.Contains("Apply Hot Changes") -or $companionSource.Contains("Apply selected Runtime Hot-Apply and Apply at Main Menu changes.")) {
     Fail "Companion source still exposes player-facing Hot-Apply controls in the clean restart UI"
 }
@@ -223,6 +203,9 @@ $linuxScriptText = Get-Content -LiteralPath $linuxScript -Raw
 $macScriptText = Get-Content -LiteralPath $macScript -Raw
 if (-not $linuxScriptText.StartsWith("#!/usr/bin/env bash")) {
     Fail "Linux launcher script is missing the bash shebang"
+}
+foreach ($marker in @('JSON::PP::decode_json($bytes)', 'canonical_dir()', 'discover_workshop_dirs()', 'Manifest candidates:', 'check_json_runtime')) {
+    if (-not $linuxScriptText.Contains($marker)) { Fail "Shell discovery safeguard missing: $marker" }
 }
 if (-not $macScriptText.StartsWith("#!/bin/sh")) {
     Fail "macOS command wrapper is missing the sh shebang"

@@ -20,7 +20,7 @@ Expected companion log marker:
 
 ```text
 Initialize ModTheSpire2 0.4.0-clean-restart-ui
-Startup self-tests: mismatchLinks=True resolver=True
+PatchAll complete
 ```
 
 Log file:
@@ -49,8 +49,8 @@ Version : 0.4.0
 1. Start the game from Steam, not by double-clicking `SlayTheSpire2.exe`.
 2. Confirm the game reaches the main menu.
 3. Open `companion.log` and confirm the clean-restart marker appears.
-4. Confirm `companion.log` includes `Startup self-tests: mismatchLinks=True resolver=True`.
-5. If either value is `False`, keep the game usable but treat the mismatch helper as needing investigation before release.
+4. Confirm `companion.log` includes `PatchAll complete`.
+5. Confirm native multiplayer errors are not augmented by MTS2.
 6. Confirm no `Initialize failed` or `Management dialog failed` line appears after that marker.
 
 ## In-Game Management Overlay
@@ -67,12 +67,10 @@ Version : 0.4.0
    - `Enabled For This Launch`
    - `Available But Disabled`
    - `Load Order`
-8. Confirm the overlay shows a multiplayer mismatch report status panel.
-9. If no multiplayer mismatch has been recorded, confirm the panel says no report exists yet.
+8. Confirm there is no multiplayer mismatch report panel.
+9. Confirm the mod list remains readable after the report panel removal.
 10. Confirm the bottom buttons include:
    - `Close and Open Launcher`
-   - `Open Missing Mod Links`
-   - `Copy Mismatch Report`
    - `Close`
 11. Confirm the overlay does not show player-facing Hot-Apply sections or buttons:
    - no `Runtime Hot-Apply`
@@ -204,29 +202,13 @@ ModTheSpire2Data\order-profiles\<profile>.enabled.txt
 4. Close the game.
 5. Reopen the launcher and confirm the same selected mods are shown because they are now in `settings.save`.
 
-## Multiplayer Mismatch Helper
+## Native Multiplayer Errors
 
-This helper is read-only and experimental. It must not bypass multiplayer checks or auto-subscribe Workshop items.
-
-1. Prepare a multiplayer join attempt where the host and local player have different gameplay-relevant mod lists.
-2. Join the host and trigger the game's mod mismatch error.
-3. Confirm the game's error text includes a `ModTheSpire2 help` section.
-4. Confirm the help text explains that the report is saved at:
-
-```text
-ModTheSpire2Data\multiplayer-mismatch-last.txt
-```
-
-5. Confirm the report file exists and includes:
-   - `ModTheSpire2 multiplayer mismatch report`
-   - missing local or host mods if the game exposed them
-   - Workshop links when ModTheSpire2 could map them
-   - `Raw NetErrorInfo`
-6. Open ModTheSpire2 Management.
-7. Confirm the mismatch status panel shows the latest report time and Workshop link count.
-8. Click `Copy Mismatch Report` and confirm the report text is copied to the clipboard.
-9. Click `Open Missing Mod Links` and confirm it opens only links from the latest report.
-10. Confirm this flow does not subscribe automatically and does not force the join to continue.
+1. Join a test lobby with mismatched mods and confirm the game's original error still appears.
+2. Confirm there is no appended ModTheSpire2 help text.
+3. Confirm management and BaseLib configuration have no mismatch report panel, report-copy button, or missing-link button.
+4. Confirm no new multiplayer-mismatch-last.txt is generated; an existing historical file is left untouched.
+5. Confirm launcher, profiles and Close and Open Launcher still work.
 
 ## Package Content
 

@@ -13,7 +13,7 @@ Current version: `0.4.0`.
 - The launcher now uses clearer profile wording: after changing order, choose or type a profile name, then click `Save`.
 - Added a regression check for overlapping mod ids/names, such as a disabled `Hina` entry next to enabled `TenshiHinanawi`, so `settings.save` enabled state must be read by exact id.
 - Adds read-only Better Mod Menu grouping import from `ModGroups` or CSV exports when available.
-- Adds an experimental read-only multiplayer mismatch helper that can record host/local mod mismatch details, show Workshop links when known, and provide Open/Copy report actions.
+- Uses the game's native multiplayer errors without additional MTS2 text or report controls.
 - Vanilla starts normally with all mods disabled, keeping the game's built-in Mod Settings available. It does not add --nomods.
 
 ## What This Mod Does
@@ -32,7 +32,6 @@ Current version: `0.4.0`.
 - Opens the Windows launcher from the current `settings.save` order and enabled state, making it friendlier with other order managers.
 - Supports named launcher order profiles.
 - The in-game `ModTheSpire2 Launcher` button opens the Close and Open Launcher confirmation so players can safely change whole-mod enablement before restart.
-- The in-game management panel can show the latest multiplayer mod mismatch report status, open recorded Workshop links, and copy the report for feedback.
 - Saves ModTheSpire2 state in `ModTheSpire2Data` inside this mod folder.
 - Backs up `settings.save` before writing mod enablement or load-order changes.
 
@@ -150,28 +149,11 @@ ModTheSpire2 first tries to read Better Mod Menu group data from the player's Be
 
 This is read-only. ModTheSpire2 does not write Better Mod Menu files and does not require Better Mod Menu.
 
-## Multiplayer Mod Mismatch Helper
+## Multiplayer Errors
 
-The multiplayer helper is experimental and read-only.
+The game's built-in multiplayer error reporting is used unchanged. MTS2 no longer appends extra lobby error information or provides mismatch report/link controls.
 
-If Slay the Spire 2 reports a multiplayer `ModMismatch`, ModTheSpire2 attempts to append a help section to the game's existing error text. When the game exposes missing mod details, ModTheSpire2 records:
-
-- mods the host has but the local player is missing;
-- mods the local player has but the host is missing;
-- Workshop links when a missing mod can be matched to local/subscribed metadata.
-
-The latest report is saved at:
-
-```text
-ModTheSpire2Data/multiplayer-mismatch-last.txt
-```
-
-Open `ModTheSpire2 Management` to see whether a report is available. The management panel includes:
-
-- `Open Missing Mod Links`: opens Workshop links recorded in the latest report, up to a safe limit.
-- `Copy Mismatch Report`: copies the full report to the clipboard for feedback.
-
-This helper does not bypass multiplayer checks, does not force join, does not auto-subscribe Workshop items, and does not alter lobby/network state.
+## Backups
 
 Before overwriting `load-order.txt`, `enabled-mods.txt`, or named order profile files, the Windows launcher copies the previous file into:
 
@@ -220,6 +202,8 @@ The in-game `Close and Open Launcher` confirmation dialog includes a copy button
 When the game is already running and you use `Close and Open Launcher`, ModTheSpire2 forwards the current game process command line to the launcher. This means a game that was started with extra renderer arguments, such as `--rendering-driver opengl3`, should keep those arguments after the restart flow.
 
 ## Linux / Steam Deck First-Pass Setup
+
+Discovery update: manifests are parsed as JSON, Steam library aliases are resolved to physical paths, and all discovered Workshop libraries are scanned. Diagnostics includes candidate, accepted, skipped, error, and duplicate counts per root; detailed reasons are in launcher-script.log. Normal Steam symlinks do not need to be removed. Perl with its standard JSON::PP module must be available; missing parsing support now reports an explicit error. Automated fixture tests pass; real Linux/macOS game testing is still required. Volunteers and feedback are welcome.
 
 The Linux launcher is a lightweight terminal script for the native Steam/Linux build:
 

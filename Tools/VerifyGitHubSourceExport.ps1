@@ -98,7 +98,7 @@ if ($readme.Contains("Conservative Hot-Apply") -or $readme.Contains("State-aware
 }
 
 $manualTest = Get-Content -LiteralPath (Join-Path $source "MANUAL_TEST_0.4.0.md") -Raw
-if (-not ($manualTest.Contains("Current settings.save") -and $manualTest.Contains("Click ``Save``") -and $manualTest.Contains("Startup self-tests: mismatchLinks=True resolver=True"))) {
+if (-not ($manualTest.Contains("Current settings.save") -and $manualTest.Contains("Click ``Save``") -and $manualTest.Contains("PatchAll complete"))) {
     Fail "Manual test checklist no longer uses current launcher labels or startup self-test marker"
 }
 if ($manualTest.Contains("Current Game Settings") -or $manualTest.Contains("Save Order") -or $manualTest.Contains("Save Profile")) {
