@@ -163,21 +163,21 @@ This feature is read-only and must not modify Better Mod Menu files.
 14. Confirm the mod moves to that row number.
 15. Confirm values below 1 are treated as 1 and values above the mod count are treated as the last row.
 16. If a move violates dependency order, confirm the launcher repairs it and reports that order was adjusted.
-17. Click `Save`.
-18. Confirm both files exist:
+17. Click `Save` after entering a profile name.
+18. Confirm the game settings file is unchanged. Named profiles contain both order and enabled states; the separate launcher recovery files are:
 
 ```text
 ModTheSpire2Data\load-order.txt
 ModTheSpire2Data\enabled-mods.txt
 ```
 
-19. Try to save while the combo says `Current settings.save`; confirm the launcher asks for a profile name instead of creating a default profile.
-20. Type a named profile with custom order and selected mods, then click `Save`.
+19. Make unsaved edits, click `Refresh`, and confirm the selected profile's saved order and checks return. Repeat A -> B -> A three times; A must be identical each time.
+20. Type or select a named profile with custom order and selected mods, then click `Save`.
 21. Change both order and checked mods.
 22. Select the named profile from the profile combo.
 23. Confirm both order and checked mods are restored immediately.
 24. Select `Current settings.save` from the combo.
-25. Confirm the list reloads from `settings.save`.
+25. Confirm the list reloads from `settings.save`, even if Vanilla recovery exists. Saving from this read-only view requests a profile name and does not overwrite game settings.
 26. Confirm the profile sidecar exists:
 
 ```text
@@ -191,9 +191,10 @@ ModTheSpire2Data\order-profiles\<profile>.enabled.txt
 3. After the game starts, close it and start the launcher again.
 4. Confirm the launcher restores the previously selected mod ids, even if v0.111 rewrote the game's `settings.save` entries as enabled.
 5. Confirm the custom load order from before Vanilla is restored, rather than the game's default order.
-6. Confirm `settings.save` used for the Vanilla launch contains disabled `mod_list` entries and preserves their order.
+6. Confirm Vanilla has no --nomods argument, no mod is loaded (including MTS2), and the game's built-in Mod Settings remains accessible. The complete mod_list must have all is_enabled flags false and mods_enabled true. Verify normal unmodded saves are used; official telemetry acceptance is not asserted by this test.
 7. Confirm saved named profiles still exist and can be selected from the profile combo.
 8. Click `Launch Selected` and confirm the pending Vanilla recovery state is cleared and only the selected mods are enabled in the restored order.
+9. Reopen the launcher and confirm the game did not turn every discovered mod on; unselected entries in `settings.save` must remain `is_enabled: false`.
 
 ## Launch Selected
 
@@ -277,7 +278,7 @@ chmod +x "/path/to/ModTheSpire2Launcher.command"
 
 4. Confirm the script reaches a menu or a clear actionable diagnostic error.
 5. Confirm the menu offers Vanilla, saved enabled mods, named profiles if present, diagnostics, and quit.
-6. Confirm launching Vanilla or saved enabled mods creates a timestamped `settings.save` backup in `ModTheSpire2Data/settings-backups`.
+6. Confirm Vanilla and selected/profile launches back up settings before writing. Vanilla writes all entries disabled; selected/profile launches write their selection. Neither passes --nomods. Native Linux/macOS still need real-system testing.
 7. Confirm the game starts once through the original Steam command.
 8. Confirm extra game launch arguments after `%command%` still reach the game where Steam supports them.
 

@@ -14,7 +14,7 @@ Current version: `0.4.0`.
 - Added a regression check for overlapping mod ids/names, such as a disabled `Hina` entry next to enabled `TenshiHinanawi`, so `settings.save` enabled state must be read by exact id.
 - Adds read-only Better Mod Menu grouping import from `ModGroups` or CSV exports when available.
 - Adds an experimental read-only multiplayer mismatch helper that can record host/local mod mismatch details, show Workshop links when known, and provide Open/Copy report actions.
-- Adds a v0.111 Vanilla compatibility safeguard: snapshots the selected mods and current load order, writes every mod entry disabled for Vanilla, and restores both snapshots after the game-side reset.
+- Vanilla starts normally with all mods disabled, keeping the game's built-in Mod Settings available. It does not add --nomods.
 
 ## What This Mod Does
 
@@ -39,12 +39,13 @@ Current version: `0.4.0`.
 ## Important Safety Notes
 
 - The launcher's live view is `Current settings.save`, read from the game's current `settings.save`.
-- `Vanilla` writes every discovered `mod_list` entry as disabled while preserving order, and saves the current enabled selection plus a separate order snapshot before starting. This covers v0.111, where the game can re-enable all entries after Vanilla regardless of the file state written before startup.
+- `Vanilla` backs up settings and writes the complete mod list with every entry disabled. Mod-loading consent stays enabled so the game retains the list. Launch Selected restores the chosen configuration. Both modes remove nomods and preserve renderer arguments.
 - After Vanilla, the launcher uses `ModTheSpire2Data/vanilla-launch.pending`, `enabled-mods.txt`, and `vanilla-load-order.txt` to restore the previous selection and order on its next opening. The temporary order snapshot does not overwrite the player's normal `load-order.txt`; a modded launch clears the recovery state.
+- `Launch Selected` rewrites the complete discovered `mod_list` with each visible checkbox state, so unselected mods remain disabled after the transition from Vanilla.
 - Named profiles are separate saved presets and are not deleted by Vanilla.
 - `Launch Selected` on Windows saves the currently checked mods and then starts the game with those mods enabled.
 - Linux/macOS scripts are first-pass lightweight launchers. They use saved enabled mods or named profiles rather than a full checkbox GUI.
-- `Save` on Windows saves the current load order and enabled mod selection into the selected or typed profile name.
+- `Save` creates or updates the named profile with its order and enabled mods. `Refresh` reloads the selected profile and discards unsaved edits. Neither action writes game settings.
 - `Close and Open Launcher` first closes the current game, then opens the launcher. This avoids running two Slay the Spire 2 instances at once.
 - `Close and Open Launcher` forwards the current game command line to the launcher, so renderer flags such as `--rendering-driver opengl3` are preserved for the next launch.
 - The standalone `Open Launcher` action was intentionally removed from the in-game overlay because launching another game instance while the current one is still running can risk settings/save conflicts.
@@ -129,7 +130,7 @@ Each profile stores one mod id per line. Each named profile can also have a side
 ModTheSpire2Data/order-profiles/<profile>.enabled.txt
 ```
 
-Use the `Save` button to save the current visible order and checked mods into the selected or typed profile name. If the profile already exists, it is updated. If it does not exist, it is created.
+`Current settings.save` is a read-only view of the settings left by the game. Save updates or creates a named profile; Refresh reloads the selected profile. Before Vanilla (recovery) retains the pre-Vanilla selection. Only launching writes game settings: Vanilla writes all-disabled entries and Launch Selected writes the chosen configuration.
 
 The legacy saved enabled-mod list is still stored at:
 

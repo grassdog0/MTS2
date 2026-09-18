@@ -18,7 +18,7 @@ https://github.com/grassdog0/MTS2
 - Added a regression check for overlapping mod ids/names, such as a disabled `Hina` entry next to enabled `TenshiHinanawi`, so `settings.save` enabled state must be read by exact id.
 - Adds read-only Better Mod Menu grouping import from `ModGroups` or CSV exports when available.
 - Adds an experimental read-only multiplayer mismatch helper with report, Workshop link, and copy-feedback actions.
-- Adds a v0.111 Vanilla compatibility safeguard: the launcher snapshots the selected mods, writes every mod entry disabled for the Vanilla launch, and restores the snapshot after the game-side reset.
+- Vanilla starts the game normally with a complete all-disabled mod configuration, preserving the game's built-in Mod Settings page. It does not add --nomods.
 
 ## Features
 
@@ -33,7 +33,7 @@ https://github.com/grassdog0/MTS2
 - Selecting a named profile applies it immediately; selecting `Current settings.save` reloads from `settings.save`.
 - Linux/macOS scripts can launch Vanilla, saved enabled mods, or named profiles from `ModTheSpire2Data`.
 - Saved enabled-mod selections in `ModTheSpire2Data/enabled-mods.txt`.
-- Vanilla launch writes every discovered `mod_list` entry as disabled while preserving order, and saves the selected mod ids before starting. This also handles v0.111, where the game may remove the old global switch and re-enable mod entries after a Vanilla launch.
+- Vanilla backs up game settings and disables all mod entries while keeping mod-loading consent enabled. The launcher retains a separate selection/order snapshot for returning to selected mods.
 - The v0.111 recovery state also snapshots the current order in `ModTheSpire2Data/vanilla-load-order.txt`, so the next launcher session restores both selection and order without overwriting the normal `load-order.txt`.
 - In-game ModTheSpire2 management entry on the game's Mod Settings page.
 - Clean in-game restart helper for changing whole-mod enablement through the launcher.
@@ -49,11 +49,11 @@ ModTheSpire2 itself is restart-required. It ships a DLL and patches game UI, so 
 
 Whole-mod enablement is managed before startup. The in-game companion does not claim it can safely unload already-loaded DLL/PCK/content/UI mods inside the current game process. Use `Close and Open Launcher` to change enabled mods or profiles.
 
-The Windows launcher's default combo entry is `Current settings.save`. It reads the current `settings.save` directly, including order and enabled state written by the base game or other mod-order tools. ModTheSpire2 only writes `settings.save` when the player launches Vanilla or Launch Selected, and named profiles remain explicit presets. After a Vanilla launch, the one-time recovery snapshot temporarily takes precedence so both the previous selection and the previous order can be restored.
+The Windows launcher's `Current settings.save` view reads the settings left by the game. Vanilla writes all mod entries disabled; Launch Selected writes the chosen configuration. Both start the game normally without --nomods. Save and Refresh operate on the selected named profile. Before Vanilla (recovery) retains the pre-Vanilla selection.
 
-For v0.111 Vanilla compatibility, a successful Vanilla launch leaves a small pending marker and a temporary order snapshot under `ModTheSpire2Data`. The next launcher session restores the saved enabled-mod selection and load order even if the game rewrote every `is_enabled` value to `true`. The snapshot is separate from named profiles and the normal `load-order.txt`; it is cleared when a modded launch is written, so normal external settings changes remain visible when no Vanilla recovery is pending.
+For v0.111 Vanilla compatibility, a successful Vanilla launch leaves a small pending marker and a temporary order snapshot under `ModTheSpire2Data`. The next launcher session restores the saved enabled-mod selection and load order. `Launch Selected` then rewrites the complete discovered list with the visible checkbox states, so unselected entries remain disabled instead of being treated as newly discovered and enabled. The snapshot is separate from named profiles and the normal `load-order.txt`; it is cleared when a modded launch is written.
 
-Use the `Save` button to save the currently visible launcher order and checked mods into the selected or typed profile name. `Current settings.save` is a live view and cannot be overwritten as a named profile.
+`Save` creates or updates the named profile's order and checked mods. `Refresh` discards unsaved edits and reloads the currently selected profile. Selecting a profile changes only the launcher view. `Current settings.save` is a read-only view of the settings left by the game; enter a profile name to save edits as a preset. After Vanilla, the separate `Before Vanilla (recovery)` view restores the pre-Vanilla selection without disguising it as current game settings.
 
 Steam Workshop cannot set Steam launch options automatically. Players who want Steam's Play button to open ModTheSpire2 first must set:
 

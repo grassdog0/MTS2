@@ -377,74 +377,46 @@ for my $line (split /\n/, ($ENV{DISCOVERED_MODS_BLOB} // '')) {
   $discovered_id{$id} = 1;
 }
 
-sub esc {
-  my ($s) = @_;
-  $s =~ s/\\/\\\\/g;
-  $s =~ s/"/\\"/g;
-  return $s;
+use JSON::PP ();
+my $root = JSON::PP::decode_json($json);
+die "settings.save must contain a JSON object\n" unless ref($root) eq 'HASH';
+my $settings = exists($root->{mod_list}) && !exists($root->{mod_settings})
+  ? $root : ($root->{mod_settings} //= {});
+die "mod_settings must be an object\n" unless ref($settings) eq 'HASH';
+$settings->{mods_enabled} = JSON::PP::true;
+my @entries;
+for my $mod (@discovered) {
+  my ($id, $source) = @$mod;
+  push @entries, { id => $id, source => $source,
+    is_enabled => ($modded && $selected{$id}) ? JSON::PP::true : JSON::PP::false };
 }
-
-if ($modded) {
-  $json =~ s/"mods_enabled"\s*:\s*false/"mods_enabled": true/s;
-} else {
-  $json =~ s/"mods_enabled"\s*:\s*true/"mods_enabled": false/s;
+for my $entry (@{ $settings->{mod_list} // [] }) {
+  next if $discovered_id{$entry->{id}};
+  $entry->{is_enabled} = JSON::PP::false unless $modded;
+  push @entries, $entry;
 }
-
-my $key = index($json, '"mod_list"');
-if ($key >= 0) {
-  my $open = index($json, '[', $key);
-  if ($open >= 0) {
-    my $i = $open;
-    my ($depth, $in, $esc) = (0, 0, 0);
-    my $close = -1;
-    while ($i < length($json)) {
-      my $c = substr($json, $i, 1);
-      if ($in) {
-        if ($esc) { $esc = 0; }
-        elsif ($c eq "\\") { $esc = 1; }
-        elsif ($c eq '"') { $in = 0; }
-      } else {
-        if ($c eq '"') { $in = 1; }
-        elsif ($c eq '[') { $depth++; }
-        elsif ($c eq ']') {
-          $depth--;
-          if ($depth == 0) { $close = $i; last; }
-        }
-      }
-      $i++;
-    }
-    if ($close > $open) {
-      my $old = substr($json, $open + 1, $close - $open - 1);
-      my @entries;
-      for my $mod (@discovered) {
-        my ($id, $source) = @$mod;
-        my $on = ($modded && $selected{$id}) ? 'true' : 'false';
-        push @entries, '{"id":"' . esc($id) . '","is_enabled":' . $on . ',"source":"' . esc($source) . '"}';
-      }
-      while ($old =~ /(\{(?:[^{}"]+|"(?:\\.|[^"\\])*")*\})/sg) {
-        my $obj = $1;
-        if ($obj =~ /"id"\s*:\s*"((?:\\.|[^"\\])*)"/s) {
-          my $id = $1;
-          $id =~ s/\\"/"/g;
-          $id =~ s/\\\\/\\/g;
-          push @entries, $obj unless $discovered_id{$id};
-        }
-      }
-      substr($json, $open, $close - $open + 1) = '[' . join(',', @entries) . ']';
-    }
-  }
-}
-
-print $json;
+$settings->{mod_list} = \@entries;
+print JSON::PP->new->utf8->pretty->encode($root);
 PERL
   mv "$tmp_file" "$settings_file" || die "Could not write settings.save."
 }
 
 launch_game() {
+  local mode="${1:-selected}"
   if [ "${#ORIGINAL_CMD[@]}" -gt 0 ]; then
-    log "Launching original command: ${ORIGINAL_CMD[*]}"
-    exec "${ORIGINAL_CMD[@]}"
+    local args=("${ORIGINAL_CMD[0]}")
+    local arg key
+    for arg in "${ORIGINAL_CMD[@]:1}"; do
+      key="$arg"
+      while [[ "$key" == -* ]]; do key="${key#-}"; done
+      case "$key" in nomods|nomods=*) continue ;; esac
+      args+=("$arg")
+    done
+    log "Launching original command ($mode): ${args[*]}"
+    exec "${args[@]}"
   fi
+
+  [ "$mode" != vanilla ] || die "Configure Steam Launch Options with -- %command% to start Vanilla through the original native game command."
 
   if command -v steam >/dev/null 2>&1; then
     log "Launching through steam app id $APP_ID"
@@ -504,7 +476,7 @@ case "$choice" in
   1)
     SELECTED_IDS=()
     write_settings "$SETTINGS_FILE" 0
-    launch_game
+    launch_game vanilla
     ;;
   2)
     enabled_from_file "$DATA_DIR/enabled-mods.txt"

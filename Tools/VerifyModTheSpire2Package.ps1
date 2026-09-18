@@ -153,6 +153,9 @@ if (-not ($launcherSource.Contains("JoinPath(csvPath, _countof(csvPath), dataDir
 if (-not ($launcherSource.Contains("vanilla-load-order.txt") -and $launcherSource.Contains("SaveOrderToPath(vanillaOrderPath)") -and $launcherSource.Contains("LoadOrderFromPathCore(vanillaOrderPath, FALSE)") -and $launcherSource.Contains("ClearVanillaRecoveryState"))) {
     Fail "Launcher no longer snapshots and restores load order around a Vanilla launch"
 }
+if (-not ($launcherSource.Contains('"mods_enabled", "true"') -and $launcherSource.Contains("BuildModListJson") -and $launcherSource.Contains("Verified selected mod settings written"))) {
+    Fail "Launcher no longer preserves v0.111 mod consent and verifies the selected mod-list write"
+}
 
 $expectedFiles = @(
     "ModTheSpire2.dll",
@@ -585,6 +588,11 @@ if ($process.ExitCode -ne 0) {
     Fail "Launcher settings self-test failed with exit code $($process.ExitCode). Last log lines: $($settingsSelfTestLog -join ' | ')"
 }
 $settingsSelfTestLogRaw = Get-Content -LiteralPath $launcherLog -Raw
+foreach ($marker in @('Vanilla argument roundtrip passed: no nomods', 'Vanilla dispatch passed: all-disabled writes')) {
+    if (-not $settingsSelfTestLogRaw.Contains($marker)) {
+        Fail "Official Vanilla startup regression missing: $marker"
+    }
+}
 if (-not $settingsSelfTestLogRaw.Contains("Settings self-test passed")) {
     Fail "Launcher settings self-test log did not report success"
 }

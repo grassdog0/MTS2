@@ -22,6 +22,7 @@
 #define MAX_DEPS 16
 #define MAX_PROFILE 128
 #define CURRENT_PROFILE_LABEL L"Current settings.save"
+#define VANILLA_PROFILE_LABEL L"Before Vanilla (recovery)"
 
 typedef struct ModInfo {
     WCHAR id[MAX_TEXT];
@@ -77,7 +78,6 @@ static void JsonDependencyVersionRequirements(const char* json, WCHAR deps[MAX_D
 static void JsonMinGameVersion(const char* json, WCHAR* out, int cap);
 static void JsonLoadAfterIds(const char* json, WCHAR ids[MAX_DEPS][MAX_TEXT], int* idCount);
 static void JsonLoadBeforeIds(const char* json, WCHAR ids[MAX_DEPS][MAX_TEXT], int* idCount);
-static BOOL LoadOrderFromPath(const WCHAR* path);
 static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList);
 static void RefreshList(void);
 static void ApplyModGroups(void);
@@ -89,6 +89,9 @@ static BOOL DirectoryHasSidecarManifest(const WCHAR* path);
 static void AppendLogf(const WCHAR* fmt, ...);
 static BOOL FindModListSpan(const char* json, DWORD size, DWORD* start, DWORD* len);
 static void SaveNamedProfile(void);
+static void LoadNamedProfile(void);
+static void GetCurrentProfileName(WCHAR* out, int cap);
+static BOOL IsCurrentSettingsProfile(const WCHAR* profile);
 static int FindUniqueModIndexByName(const WCHAR* name);
 static int FindUniqueModIndexByWorkshopId(const WCHAR* workshopId);
 static int FindModIndexById(const WCHAR* id);
@@ -96,11 +99,13 @@ static void DiscoverRoot(const WCHAR* root, const WCHAR* source);
 static void SortModsByCurrentSettings(void);
 static void SortModsByDependencies(void);
 static BOOL ValidateSelectedDependencyOrder(WCHAR* outMessage, int cap);
-static void WriteSettings(BOOL modded);
-static BOOL StartGame(void);
+static BOOL WriteSettings(BOOL modded);
+static BOOL StartGame(BOOL modded);
 static BOOL VersionIsLowerThan(const WCHAR* actual, const WCHAR* required);
 static char* ReplaceAll(const char* src, DWORD* size, const char* oldText, const char* newText);
 static char* ReplaceAllOccurrences(char* json, DWORD* size, const char* oldText, const char* newText);
+static BOOL SetJsonMember(char** json, DWORD* size, const char* key, const char* value);
+static BOOL JsonMemberSpan(const char* json, DWORD size, const char* key, DWORD* start, DWORD* len, DWORD* closing);
 
 static Mts2LauncherServices g_services = {
     { DiscoverRoot },
@@ -1442,7 +1447,7 @@ static BOOL SaveOrderToPath(const WCHAR* path) {
     return TRUE;
 }
 
-static BOOL LoadEnabledFromPathToList(const WCHAR* path) {
+static BOOL LoadEnabledFromPathToListEx(const WCHAR* path, BOOL prune) {
     if (!g_list) return FALSE;
     DWORD size = 0;
     char* data = ReadFileBytes(path, &size);
@@ -1480,7 +1485,7 @@ static BOOL LoadEnabledFromPathToList(const WCHAR* path) {
         }
         ListView_SetCheckState(g_list, i, enabled);
     }
-    int pruned = PruneInvalidChecks();
+    int pruned = prune ? PruneInvalidChecks() : 0;
     g_enforcingChecks = FALSE;
     if (pruned > 0 && g_status) {
         WCHAR status[MAX_TEXT];
@@ -1490,6 +1495,10 @@ static BOOL LoadEnabledFromPathToList(const WCHAR* path) {
 
     HeapFree(GetProcessHeap(), 0, ids);
     return TRUE;
+}
+
+static BOOL LoadEnabledFromPathToList(const WCHAR* path) {
+    return LoadEnabledFromPathToListEx(path, TRUE);
 }
 
 static void SaveCurrentOrder(void) {
@@ -2383,16 +2392,21 @@ static void SortModsByCurrentSettings(void) {
     ApplyVisualDependencyIndentPreservingOrder();
 }
 
-static void BackupSettings(void) {
+static BOOL BackupSettings(void) {
     WCHAR dir[MAX_PATH * 2], dst[MAX_PATH * 2], name[128];
     JoinPath(dir, _countof(dir), g_appDir, L"ModTheSpire2Data");
     CreateDirectoryW(dir, NULL);
     wcscat(dir, L"\\settings-backups");
     CreateDirectoryW(dir, NULL);
     SYSTEMTIME st; GetLocalTime(&st);
-    swprintf(name, _countof(name), L"settings.save.%04d%02d%02d-%02d%02d%02d.bak", st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond);
-    JoinPath(dst, _countof(dst), dir, name);
-    CopyFileW(g_settingsFile, dst, TRUE);
+    for (int attempt = 0; attempt < 1000; ++attempt) {
+        swprintf(name, _countof(name), L"settings.save.%04d%02d%02d-%02d%02d%02d-%03d-%d.bak",
+                 st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, st.wMilliseconds, attempt);
+        JoinPath(dst, _countof(dst), dir, name);
+        if (CopyFileW(g_settingsFile, dst, TRUE)) return TRUE;
+        if (GetLastError() != ERROR_FILE_EXISTS && GetLastError() != ERROR_ALREADY_EXISTS) return FALSE;
+    }
+    return FALSE;
 }
 
 static const WCHAR* SourceForSettings(const ModInfo* mod) {
@@ -2472,7 +2486,14 @@ static char* BuildModListJson(BOOL modded, const char* oldList, DWORD oldListLen
                 HeapFree(GetProcessHeap(), 0, out);
                 return NULL;
             }
-            if (!AppendBytes(&out, &len, &cap, objectStart, (DWORD)(objectEnd - objectStart))) {
+            DWORD objectLen = (DWORD)(objectEnd - objectStart);
+            char* preserved = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, objectLen + 1);
+            if (!preserved) { HeapFree(GetProcessHeap(), 0, out); return NULL; }
+            memcpy(preserved, objectStart, objectLen);
+            BOOL ok = modded || SetJsonMember(&preserved, &objectLen, "is_enabled", "false");
+            if (ok) ok = AppendBytes(&out, &len, &cap, preserved, objectLen);
+            HeapFree(GetProcessHeap(), 0, preserved);
+            if (!ok) {
                 HeapFree(GetProcessHeap(), 0, out);
                 return NULL;
             }
@@ -2488,18 +2509,20 @@ static char* BuildModListJson(BOOL modded, const char* oldList, DWORD oldListLen
 
 static char* ReplaceModList(char* json, DWORD* size, BOOL modded) {
     DWORD start = 0, len = 0, newLen = 0;
-    if (!FindModListSpan(json, *size, &start, &len)) return json;
-    char* modList = BuildModListJson(modded, json + start, len, &newLen);
-    if (!modList) return json;
+    DWORD closing = 0;
+    BOOL hasList = JsonMemberSpan(json, *size, "mod_list", &start, &len, &closing) && json[start] == '[';
+    char* modList = BuildModListJson(modded, hasList ? json + start : "[]", hasList ? len : 2, &newLen);
+    if (!modList) { HeapFree(GetProcessHeap(), 0, json); return NULL; }
     if (!modded) {
         modList = ReplaceAllOccurrences(modList, &newLen, "\"is_enabled\": true", "\"is_enabled\": false");
         modList = ReplaceAllOccurrences(modList, &newLen, "\"is_enabled\":true", "\"is_enabled\":false");
         modList = ReplaceAllOccurrences(modList, &newLen, "\"is_enabled\" : true", "\"is_enabled\" : false");
         modList = ReplaceAllOccurrences(modList, &newLen, "\"is_enabled\" :true", "\"is_enabled\" :false");
     }
-    char* replaced = ReplaceSpan(json, size, start, len, modList);
+    BOOL ok = SetJsonMember(&json, size, "mod_list", modList);
     HeapFree(GetProcessHeap(), 0, modList);
-    return replaced;
+    if (!ok) { HeapFree(GetProcessHeap(), 0, json); return NULL; }
+    return json;
 }
 
 static char* ReplaceAll(const char* src, DWORD* size, const char* oldText, const char* newText) {
@@ -2542,29 +2565,111 @@ static char* ReplaceSpan(char* src, DWORD* size, DWORD start, DWORD oldLen, cons
     return out;
 }
 
-static void WriteSettings(BOOL modded) {
-    if (!FileExistsW2(g_settingsFile)) {
-        MessageBoxW(NULL, L"settings.save was not found. Start the game once first, or check the path.", L"ModTheSpire2", MB_ICONERROR);
-        return;
+// Find direct object members, ignoring nested objects and text inside strings.
+static BOOL JsonMemberSpan(const char* json, DWORD size, const char* key, DWORD* start, DWORD* len, DWORD* closing) {
+    int depth = 0;
+    for (DWORD i = 0; i < size; ++i) {
+        char c = json[i];
+        if (c == '"') {
+            DWORD begin = ++i;
+            while (i < size && json[i] != '"') {
+                if (json[i] == '\\') ++i;
+                ++i;
+            }
+            if (i >= size) return FALSE;
+            DWORD after = i + 1;
+            while (after < size && strchr(" \t\r\n", json[after])) ++after;
+            if (depth == 1 && after < size && json[after] == ':' &&
+                i - begin == strlen(key) && !memcmp(json + begin, key, i - begin)) {
+                DWORD value = after + 1;
+                while (value < size && strchr(" \t\r\n", json[value])) ++value;
+                int nested = 0;
+                BOOL quoted = FALSE, escaped = FALSE;
+                DWORD end = value;
+                for (; end < size; ++end) {
+                    c = json[end];
+                    if (quoted) {
+                        if (escaped) escaped = FALSE;
+                        else if (c == '\\') escaped = TRUE;
+                        else if (c == '"') quoted = FALSE;
+                    } else if (c == '"') quoted = TRUE;
+                    else if (!nested && (c == ',' || c == '}')) break;
+                    else if (c == '{' || c == '[') ++nested;
+                    else if (c == '}' || c == ']') --nested;
+                }
+                if (end == size || quoted || nested) return FALSE;
+                while (end > value && strchr(" \t\r\n", json[end - 1])) --end;
+                *start = value; *len = end - value;
+                return *len > 0;
+            }
+        } else if (c == '{' || c == '[') ++depth;
+        else if (c == '}' || c == ']') {
+            if (--depth == 0 && c == '}') { *closing = i; return FALSE; }
+        }
     }
-    BackupSettings();
-    DWORD size = 0;
-    char* json = ReadFileBytes(g_settingsFile, &size);
-    if (!json) return;
-    char* replaced = NULL;
-    if (modded) replaced = ReplaceAll(json, &size, "\"mods_enabled\": false", "\"mods_enabled\": true");
-    else replaced = ReplaceAll(json, &size, "\"mods_enabled\": true", "\"mods_enabled\": false");
-    if (replaced) { HeapFree(GetProcessHeap(), 0, json); json = replaced; }
-
-    json = ReplaceModList(json, &size, modded);
-    AppendLog(modded
-        ? L"Modded launch: writing selected per-mod enabled states"
-        : L"Vanilla launch: disabling every discovered mod while preserving order");
-    WriteFileBytes(g_settingsFile, json, size);
-    HeapFree(GetProcessHeap(), 0, json);
+    return FALSE;
 }
 
-static void RefreshList(void) {
+static BOOL SetJsonMember(char** json, DWORD* size, const char* key, const char* value) {
+    DWORD start = 0, len = 0, closing = 0;
+    BOOL found = JsonMemberSpan(*json, *size, key, &start, &len, &closing);
+    const char* insert = value;
+    char* member = NULL;
+    if (!found) {
+        if (!closing || *JsonStart(*json) != '{') return FALSE;
+        member = HeapAlloc(GetProcessHeap(), 0, strlen(key) + strlen(value) + 8);
+        if (!member) return FALSE;
+        snprintf(member, strlen(key) + strlen(value) + 8, "%s\"%s\":%s",
+                 *SkipWs(JsonStart(*json) + 1) == '}' ? "" : ",", key, value);
+        insert = member; start = closing; len = 0;
+    }
+    DWORD expected = *size - len + (DWORD)strlen(insert);
+    *json = ReplaceSpan(*json, size, start, len, insert);
+    BOOL ok = *size == expected && !memcmp(*json + start, insert, strlen(insert));
+    if (member) HeapFree(GetProcessHeap(), 0, member);
+    return ok;
+}
+
+static BOOL WriteSettings(BOOL modded) {
+    DWORD size = 0;
+    char* json = ReadFileBytes(g_settingsFile, &size);
+    if (!json) return FALSE;
+    DWORD start = 0, len = 0, closing = 0;
+    BOOL nested = JsonMemberSpan(json, size, "mod_settings", &start, &len, &closing);
+    // Keep support for legacy root-level mod settings; current saves nest them.
+    DWORD legacyStart = 0, legacyLen = 0;
+    BOOL legacy = !nested && JsonMemberSpan(json, size, "mod_list", &legacyStart, &legacyLen, &closing);
+    DWORD sectionSize = nested ? len : (legacy ? size : 2);
+    char* section = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, sectionSize + 1);
+    if (!section) { HeapFree(GetProcessHeap(), 0, json); return FALSE; }
+    memcpy(section, nested ? json + start : (legacy ? json : "{}"), sectionSize);
+    // mods_enabled is consent, not the Vanilla switch. False clears ModList in v111.
+    BOOL ok = SetJsonMember(&section, &sectionSize, "mods_enabled", "true");
+    if (ok) { section = ReplaceModList(section, &sectionSize, modded); ok = section != NULL; }
+    if (ok) {
+        if (legacy) { HeapFree(GetProcessHeap(), 0, json); json = section; size = sectionSize; section = NULL; }
+        else ok = SetJsonMember(&json, &size, "mod_settings", section);
+    }
+    if (section) HeapFree(GetProcessHeap(), 0, section);
+    if (ok) ok = BackupSettings();
+    WCHAR temp[MAX_PATH * 2];
+    swprintf(temp, _countof(temp), L"%ls.mts2-%lu.tmp", g_settingsFile, GetCurrentProcessId());
+    if (ok) {
+        ok = WriteFileBytes(temp, json, size);
+        DWORD readSize = 0;
+        char* readBack = ok ? ReadFileBytes(temp, &readSize) : NULL;
+        ok = readBack && readSize == size && !memcmp(readBack, json, size);
+        if (readBack) HeapFree(GetProcessHeap(), 0, readBack);
+        if (ok) ok = MoveFileExW(temp, g_settingsFile, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+        DeleteFileW(temp);
+    }
+    HeapFree(GetProcessHeap(), 0, json);
+    AppendLog(ok ? (modded ? L"Verified selected mod settings written" : L"Verified Vanilla settings: consent retained, all mods disabled")
+                 : L"Settings write failed; game must not start");
+    return ok;
+}
+
+static void RefreshListCore(BOOL allowVanillaRecovery) {
     ListView_DeleteAllItems(g_list);
     g_modCount = 0;
     g_savedEnabledCount = 0;
@@ -2579,7 +2684,7 @@ static void RefreshList(void) {
         WCHAR vanillaOrderPath[MAX_PATH * 2];
         GetVanillaPendingPath(pendingPath, _countof(pendingPath));
         GetVanillaLoadOrderPath(vanillaOrderPath, _countof(vanillaOrderPath));
-        restoreSavedSelection = FileExistsW2(pendingPath);
+        restoreSavedSelection = allowVanillaRecovery && FileExistsW2(pendingPath);
         restoreSavedOrder = restoreSavedSelection && FileExistsW2(vanillaOrderPath);
     } else {
         g_savedOrderCount = 0;
@@ -2657,6 +2762,10 @@ static void RefreshList(void) {
         swprintf(status, _countof(status), L"Found %d mods. Showing current game settings.", g_modCount);
     }
     SetWindowTextW(g_status, status);
+}
+
+static void RefreshList(void) {
+    RefreshListCore(TRUE);
 }
 
 static void QuoteArg(WCHAR* out, int cap, const WCHAR* arg) {
@@ -3014,10 +3123,45 @@ static BOOL RunNamedProfileSaveSelfTest(void) {
         return FALSE;
     }
 
+    WCHAR selectedId[MAX_TEXT], roundTripPath[MAX_PATH * 2];
+    wcscpy(selectedId, g_mods[second].id);
+    GetProfilePath(L"self-test-profile-roundtrip", roundTripPath, _countof(roundTripPath));
+    DWORD settingsSize = 0, expectedSize = 0;
+    char* settingsBefore = ReadFileBytes(g_settingsFile, &settingsSize);
+    char* expectedOrder = ReadFileBytes(profilePath, &expectedSize);
+    BOOL roundTripOk = settingsBefore && expectedOrder;
+    for (int repeat = 0; repeat < 3 && roundTripOk; ++repeat) {
+        SetWindowTextW(g_profileCombo, CURRENT_PROFILE_LABEL);
+        LoadNamedProfile();
+        SetWindowTextW(g_profileCombo, profileName);
+        LoadNamedProfile();
+        for (int i = 0; i < g_modCount; ++i)
+            if (!!ListView_GetCheckState(g_list, i) != (_wcsicmp(g_mods[i].id, selectedId) == 0)) roundTripOk = FALSE;
+        SaveOrderToPath(roundTripPath);
+        DWORD actualSize = 0;
+        char* actualOrder = ReadFileBytes(roundTripPath, &actualSize);
+        if (!actualOrder || actualSize != expectedSize || memcmp(actualOrder, expectedOrder, expectedSize)) roundTripOk = FALSE;
+        if (actualOrder) HeapFree(GetProcessHeap(), 0, actualOrder);
+        // Unsaved edits must disappear on Refresh, which shares this loader.
+        for (int i = 0; i < g_modCount; ++i) ListView_SetCheckState(g_list, i, TRUE);
+        LoadNamedProfile();
+        for (int i = 0; i < g_modCount; ++i)
+            if (!!ListView_GetCheckState(g_list, i) != (_wcsicmp(g_mods[i].id, selectedId) == 0)) roundTripOk = FALSE;
+    }
+    DWORD settingsAfterSize = 0;
+    char* settingsAfter = ReadFileBytes(g_settingsFile, &settingsAfterSize);
+    if (!settingsAfter || settingsAfterSize != settingsSize || !settingsBefore ||
+        memcmp(settingsBefore, settingsAfter, settingsSize)) roundTripOk = FALSE;
+    if (settingsBefore) HeapFree(GetProcessHeap(), 0, settingsBefore);
+    if (settingsAfter) HeapFree(GetProcessHeap(), 0, settingsAfter);
+    if (expectedOrder) HeapFree(GetProcessHeap(), 0, expectedOrder);
+    DeleteFileW(roundTripPath);
     if (!oldCombo && g_profileCombo) DestroyWindow(g_profileCombo);
     g_profileCombo = oldCombo;
     DeleteFileW(profilePath);
     DeleteFileW(enabledPath);
+    AppendLog(roundTripOk ? L"Profile switch/refresh roundtrip passed; settings.save unchanged" : L"Profile switch/refresh roundtrip failed");
+    if (!roundTripOk) return FALSE;
     AppendLog(L"Named profile self-test passed");
     return TRUE;
 }
@@ -3382,6 +3526,10 @@ static void RefreshProfiles(void) {
     g_refreshingProfiles = TRUE;
     SendMessageW(g_profileCombo, CB_RESETCONTENT, 0, 0);
     SendMessageW(g_profileCombo, CB_ADDSTRING, 0, (LPARAM)CURRENT_PROFILE_LABEL);
+    WCHAR pendingPath[MAX_PATH * 2];
+    GetVanillaPendingPath(pendingPath, _countof(pendingPath));
+    if (FileExistsW2(pendingPath))
+        SendMessageW(g_profileCombo, CB_ADDSTRING, 0, (LPARAM)VANILLA_PROFILE_LABEL);
     WCHAR dir[MAX_PATH * 2], search[MAX_PATH * 2];
     GetProfilesDir(dir, _countof(dir));
     swprintf(search, _countof(search), L"%ls\\*.txt", dir);
@@ -3434,8 +3582,8 @@ static BOOL IsCurrentSettingsProfile(const WCHAR* profile) {
 static void SaveNamedProfile(void) {
     WCHAR profile[MAX_PROFILE], path[MAX_PATH * 2], enabledPath[MAX_PATH * 2];
     GetCurrentProfileName(profile, _countof(profile));
-    if (IsCurrentSettingsProfile(profile)) {
-        MessageBoxW(NULL, L"Type a profile name before saving. Current settings.save is the live game settings view and is not a named profile.", L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
+    if (IsCurrentSettingsProfile(profile) || _wcsicmp(profile, VANILLA_PROFILE_LABEL) == 0) {
+        MessageBoxW(NULL, L"Enter a profile name to save this selection as a preset. Game settings and Vanilla recovery are read-only views.", L"ModTheSpire2", MB_OK | MB_ICONINFORMATION);
         return;
     }
     GetProfilePath(profile, path, _countof(path));
@@ -3453,7 +3601,7 @@ static void SaveNamedProfile(void) {
     SetWindowTextW(g_status, L"Profile saved with current order and enabled selections.");
 }
 
-static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList) {
+static BOOL LoadOrderFromPathCoreEx(const WCHAR* path, BOOL rebuildList, BOOL repair) {
     DWORD size = 0;
     char* data = ReadFileBytes(path, &size);
     if (!data) {
@@ -3504,7 +3652,7 @@ static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList) {
     HeapFree(GetProcessHeap(), 0, ids);
     HeapFree(GetProcessHeap(), 0, ordered);
     HeapFree(GetProcessHeap(), 0, used);
-    BOOL repaired = RepairDependencyOrderInPlace();
+    BOOL repaired = repair && RepairDependencyOrderInPlace();
     if (rebuildList && g_list) RebuildListPreservingChecks(0);
     if (g_status) SetWindowTextW(g_status, repaired
         ? L"Profile loaded. Order was adjusted to satisfy dependencies."
@@ -3512,36 +3660,123 @@ static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList) {
     return repaired;
 }
 
-static BOOL LoadOrderFromPath(const WCHAR* path) {
-    return LoadOrderFromPathCore(path, TRUE);
+static BOOL LoadOrderFromPathCore(const WCHAR* path, BOOL rebuildList) {
+    return LoadOrderFromPathCoreEx(path, rebuildList, TRUE);
 }
 
 static void LoadNamedProfile(void) {
     WCHAR profile[MAX_PROFILE], path[MAX_PATH * 2], enabledPath[MAX_PATH * 2];
     GetCurrentProfileName(profile, _countof(profile));
-    if (IsCurrentSettingsProfile(profile)) {
+    if (_wcsicmp(profile, VANILLA_PROFILE_LABEL) == 0) {
         RefreshList();
+        return;
+    }
+    if (IsCurrentSettingsProfile(profile)) {
+        RefreshListCore(FALSE);
         SetWindowTextW(g_status, L"Reloaded current game settings from settings.save.");
         return;
     }
     GetProfilePath(profile, path, _countof(path));
-    BOOL repaired = LoadOrderFromPath(path);
     GetProfileEnabledPath(profile, enabledPath, _countof(enabledPath));
-    if (LoadEnabledFromPathToList(enabledPath)) {
-        SetWindowTextW(g_status, repaired
-            ? L"Named profile loaded with enabled mods. Order was adjusted to satisfy dependencies."
-            : L"Profile loaded with enabled selections.");
+    if (!FileExistsW2(path)) {
+        SetWindowTextW(g_status, L"Profile not found. Save this name to create it.");
+        return;
     }
+    RefreshListCore(FALSE);
+    // Start from a deterministic inventory, never the previously selected preset.
+    ListView_DeleteAllItems(g_list);
+    qsort(g_mods, g_modCount, sizeof(ModInfo), CmpMods);
+    LoadOrderFromPathCoreEx(path, FALSE, FALSE);
+    ApplyVisualDependencyIndentPreservingOrder();
+    RebuildListPreservingChecks(0);
+    if (LoadEnabledFromPathToListEx(enabledPath, FALSE))
+        SetWindowTextW(g_status, L"Profile reloaded with its saved order and enabled mods.");
+    else
+        SetWindowTextW(g_status, L"Profile has no readable enabled-mod file. All mods are unchecked.");
 }
 
-static BOOL StartOriginalCommand(void) {
+static BOOL AppendLaunchArg(WCHAR* out, int cap, const WCHAR* arg) {
+    size_t used = wcslen(out);
+    // Windows argv quoting, including quotes and trailing backslashes.
+    if (used + 4 >= (size_t)cap) return FALSE;
+    if (used) out[used++] = L' ';
+    out[used++] = L'"';
+    while (*arg) {
+        int slashes = 0;
+        while (*arg == L'\\') { ++slashes; ++arg; }
+        int count = (*arg == L'"' || !*arg) ? slashes * 2 : slashes;
+        if (used + count + 4 >= (size_t)cap) return FALSE;
+        while (count--) out[used++] = L'\\';
+        if (*arg == L'"') out[used++] = L'\\';
+        if (*arg) out[used++] = *arg++;
+    }
+    out[used++] = L'"'; out[used] = 0;
+    return TRUE;
+}
+
+static BOOL IsNoModsArg(const WCHAR* arg) {
+    while (*arg == L'-') ++arg;
+    return wcsncmp(arg, L"nomods", 6) == 0 && (!arg[6] || arg[6] == L'=');
+}
+
+static BOOL BuildGameArguments(const WCHAR* original, BOOL modded, WCHAR* out, int cap) {
+    (void)modded;
+    size_t size = wcslen(original) + 16;
+    WCHAR* command = HeapAlloc(GetProcessHeap(), 0, size * sizeof(WCHAR));
+    if (!command) return FALSE;
+    swprintf(command, size, L"game.exe %ls", original);
+    int argc = 0;
+    WCHAR** argv = CommandLineToArgvW(command, &argc);
+    HeapFree(GetProcessHeap(), 0, command);
+    if (!argv) return FALSE;
+    out[0] = 0;
+    BOOL ok = TRUE;
+    for (int i = 1; i < argc && ok; ++i) {
+        if (IsNoModsArg(argv[i])) continue;
+        if (ok) ok = AppendLaunchArg(out, cap, argv[i]);
+    }
+    LocalFree(argv);
+    return ok;
+}
+
+static BOOL RunLaunchArgumentsSelfTest(void) {
+    const WCHAR* cases[] = {
+        L"", L"--rendering-driver opengl3", L"--nomods --rendering-driver opengl3",
+        L"--nomods=false -nomods nomods -- --custom \"two words\"",
+        L"--path \"C:\\game files\\\\\" --label \"a\\\"b\" --value \"\""
+    };
+    for (int c = 0; c < (int)_countof(cases); ++c) {
+        WCHAR vanilla[16384], selected[16384], roundtrip[16384], command[16400];
+        if (!BuildGameArguments(cases[c], FALSE, vanilla, _countof(vanilla)) ||
+            !BuildGameArguments(cases[c], TRUE, selected, _countof(selected)) ||
+            !BuildGameArguments(vanilla, TRUE, roundtrip, _countof(roundtrip)) ||
+            wcscmp(selected, roundtrip)) return FALSE;
+        swprintf(command, _countof(command), L"game.exe %ls", vanilla);
+        int argc = 0, count = 0;
+        WCHAR** argv = CommandLineToArgvW(command, &argc);
+        if (!argv) return FALSE;
+        BOOL userArgs = FALSE, ok = TRUE;
+        for (int i = 1; i < argc; ++i) {
+            if (!wcscmp(argv[i], L"--")) userArgs = TRUE;
+            if (IsNoModsArg(argv[i])) { ++count; if (userArgs) ok = FALSE; }
+        }
+        LocalFree(argv);
+        if (!ok || count != 0) return FALSE;
+    }
+    WCHAR tiny[4];
+    if (BuildGameArguments(L"--rendering-driver opengl3", FALSE, tiny, _countof(tiny))) return FALSE;
+    AppendLog(L"Vanilla argument roundtrip passed: no nomods, renderer arguments preserved");
+    return TRUE;
+}
+
+static BOOL StartOriginalCommand(const WCHAR* arguments) {
     if (!g_steamExe[0]) return FALSE;
 
-    AppendLogf(L"Start original command: exe=%ls args=%ls", g_steamExe, g_steamArgs);
+    AppendLogf(L"Start original command: exe=%ls args=%ls", g_steamExe, arguments);
     SHELLEXECUTEINFOW info = {0};
     info.cbSize = sizeof(info);
     info.lpFile = g_steamExe;
-    info.lpParameters = g_steamArgs[0] ? g_steamArgs : NULL;
+    info.lpParameters = arguments[0] ? arguments : NULL;
     info.lpDirectory = g_gameDir[0] ? g_gameDir : NULL;
     info.nShow = SW_SHOWNORMAL;
     if (ShellExecuteExW(&info)) return TRUE;
@@ -3550,8 +3785,14 @@ static BOOL StartOriginalCommand(void) {
     return FALSE;
 }
 
-static BOOL StartGame(void) {
-    if (StartOriginalCommand()) return TRUE;
+static BOOL StartGame(BOOL modded) {
+    WCHAR arguments[16384];
+    if (!BuildGameArguments(g_steamArgs, modded, arguments, _countof(arguments))) {
+        AppendLog(L"Could not construct game arguments; launch canceled");
+        return FALSE;
+    }
+    AppendLog(modded ? L"Launch Selected: normal startup with selected mods" : L"Vanilla: normal startup with every mod disabled; no nomods flag");
+    if (g_steamExe[0]) return StartOriginalCommand(arguments);
 
     WCHAR exe[MAX_PATH * 2];
     JoinPath(exe, _countof(exe), g_gameDir, L"SlayTheSpire2.exe");
@@ -3560,7 +3801,7 @@ static BOOL StartGame(void) {
         return FALSE;
     }
     AppendLogf(L"Start fallback game exe by ShellExecute: %ls", exe);
-    HINSTANCE result = ShellExecuteW(NULL, L"open", exe, NULL, g_gameDir, SW_SHOWNORMAL);
+    HINSTANCE result = ShellExecuteW(NULL, L"open", exe, arguments[0] ? arguments : NULL, g_gameDir, SW_SHOWNORMAL);
     if ((INT_PTR)result <= 32) {
         AppendLogf(L"ShellExecute fallback failed: %ld", (LONG_PTR)result);
         return FALSE;
@@ -3638,14 +3879,16 @@ static void Launch(BOOL modded) {
         MessageBoxW(NULL, L"Could not save enabled-mods.txt.", L"ModTheSpire2", MB_ICONERROR);
         return;
     }
-    g_services.settings.write(modded);
-    if (modded) {
-        ClearVanillaRecoveryState();
-    } else if (!SetVanillaLaunchPending(TRUE)) {
+    if (!modded && !SetVanillaLaunchPending(TRUE)) {
         MessageBoxW(NULL, L"Could not create the Vanilla recovery marker.", L"ModTheSpire2", MB_OK | MB_ICONERROR);
         return;
     }
-    if (g_services.launch.startGame()) {
+    if (!g_services.settings.write(modded)) {
+        MessageBoxW(NULL, L"Could not safely write settings.save. The game has not been started. Please check launcher.log.", L"ModTheSpire2", MB_ICONERROR);
+        return;
+    }
+    if (g_services.launch.startGame(modded)) {
+        if (modded) ClearVanillaRecoveryState();
         PostQuitMessage(0);
     } else {
         MessageBoxW(NULL, L"Failed to start the game. Please check launcher.log.", L"ModTheSpire2", MB_ICONERROR);
@@ -3755,6 +3998,9 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         if (g_titleFont) SendMessageW(g_title, WM_SETFONT, (WPARAM)g_titleFont, TRUE);
         RefreshProfiles();
         RefreshList();
+        WCHAR pendingPath[MAX_PATH * 2];
+        GetVanillaPendingPath(pendingPath, _countof(pendingPath));
+        if (FileExistsW2(pendingPath)) SelectProfileByName(VANILLA_PROFILE_LABEL);
         break;
     case WM_CTLCOLORSTATIC:
     case WM_CTLCOLOREDIT:
@@ -3763,14 +4009,23 @@ static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp) {
         return (LRESULT)g_bgBrush;
     case WM_COMMAND:
         AppendLogf(L"WM_COMMAND id=%u code=%u hwnd=%p", LOWORD(wp), HIWORD(wp), (void*)lp);
-        if (LOWORD(wp) == 100 || (HWND)lp == g_btnRefresh) RefreshList();
+        if (LOWORD(wp) == 100 || (HWND)lp == g_btnRefresh) LoadNamedProfile();
         if (LOWORD(wp) == 101 || (HWND)lp == g_btnVanilla) Launch(FALSE);
         if (LOWORD(wp) == 102 || (HWND)lp == g_btnLaunch) Launch(TRUE);
         if (LOWORD(wp) == 103 || (HWND)lp == g_btnUp) MoveSelectedMod(-1);
         if (LOWORD(wp) == 104 || (HWND)lp == g_btnDown) MoveSelectedMod(1);
         if (LOWORD(wp) == 105 || (HWND)lp == g_btnSaveOrder) SaveCurrentOrder();
         if (LOWORD(wp) == 108 || (HWND)lp == g_btnApplyOrder) ApplySelectedOrderNumber();
-        if (LOWORD(wp) == 109 && HIWORD(wp) == CBN_SELCHANGE && !g_refreshingProfiles) LoadNamedProfile();
+        if (LOWORD(wp) == 109 && HIWORD(wp) == CBN_SELCHANGE && !g_refreshingProfiles) {
+            int selected = (int)SendMessageW(g_profileCombo, CB_GETCURSEL, 0, 0);
+            WCHAR profile[MAX_PROFILE];
+            LRESULT length = SendMessageW(g_profileCombo, CB_GETLBTEXTLEN, selected, 0);
+            if (selected != CB_ERR && length >= 0 && length < MAX_PROFILE) {
+                SendMessageW(g_profileCombo, CB_GETLBTEXT, selected, (LPARAM)profile);
+                SetWindowTextW(g_profileCombo, profile);
+                LoadNamedProfile();
+            }
+        }
         break;
     case WM_NOTIFY:
         if (((LPNMHDR)lp)->hwndFrom == g_list && ((LPNMHDR)lp)->code == LVN_ITEMCHANGED) {
@@ -4096,7 +4351,89 @@ static int RunOrderSelfTest(void) {
     return 0;
 }
 
+static int g_testSettingsWrites, g_testGameStarts;
+static BOOL g_testLaunchModded, g_testSettingsModded;
+
+static BOOL TestSettingsWrite(BOOL modded) {
+    ++g_testSettingsWrites;
+    g_testSettingsModded = modded;
+    return WriteSettings(modded);
+}
+
+static BOOL TestStartGame(BOOL modded) {
+    ++g_testGameStarts;
+    g_testLaunchModded = modded;
+    return TRUE;
+}
+
+static BOOL RunVanillaDispatchSelfTest(void) {
+    INITCOMMONCONTROLSEX icc = { sizeof(icc), ICC_LISTVIEW_CLASSES };
+    InitCommonControlsEx(&icc);
+    HWND host = CreateWindowW(L"STATIC", L"", WS_OVERLAPPED, 0, 0, 100, 100, NULL, NULL, g_instance, NULL);
+    if (!host) return FALSE;
+    WCHAR originalSettings[MAX_PATH * 2], fixture[MAX_PATH * 2];
+    wcscpy(originalSettings, g_settingsFile);
+    JoinPath(fixture, _countof(fixture), g_appDir, L"ModTheSpire2Data\\vanilla-dispatch.save");
+    const char* seed = "{\"language\":\"eng\",\"mod_settings\":{\"mods_enabled\":false}}";
+    if (!WriteFileBytes(fixture, seed, (DWORD)strlen(seed))) { DestroyWindow(host); return FALSE; }
+    wcscpy(g_settingsFile, fixture);
+    g_gamePath = CreateWindowW(L"STATIC", g_gameDir, WS_CHILD, 0, 0, 1, 1, host, NULL, g_instance, NULL);
+    g_settingsPath = CreateWindowW(L"STATIC", g_settingsFile, WS_CHILD, 0, 0, 1, 1, host, NULL, g_instance, NULL);
+    g_list = CreateWindowW(WC_LISTVIEWW, L"", WS_CHILD | LVS_REPORT, 0, 0, 1, 1, host, NULL, g_instance, NULL);
+    if (!g_gamePath || !g_settingsPath || !g_list) { DestroyWindow(host); return FALSE; }
+    ListView_SetExtendedListViewStyle(g_list, LVS_EX_CHECKBOXES);
+    g_modCount = 2;
+    ZeroMemory(&g_mods[0], sizeof(g_mods[0]));
+    wcscpy(g_mods[0].id, L"DispatchFixture");
+    ZeroMemory(&g_mods[1], sizeof(g_mods[1]));
+    wcscpy(g_mods[1].id, L"DisabledFixture");
+    LVITEMW item = {0}; item.mask = LVIF_TEXT; item.pszText = L"Dispatch fixture";
+    ListView_InsertItem(g_list, &item);
+    item.iItem = 1;
+    ListView_InsertItem(g_list, &item);
+    ListView_SetCheckState(g_list, 0, TRUE);
+    Mts2SettingsService settingsService = g_services.settings;
+    Mts2LaunchService launchService = g_services.launch;
+    g_services.settings.write = TestSettingsWrite;
+    g_services.launch.startGame = TestStartGame;
+    g_testSettingsWrites = g_testGameStarts = 0;
+    Launch(FALSE);
+    BOOL ok = g_testSettingsWrites == 1 && !g_testSettingsModded && g_testGameStarts == 1 && !g_testLaunchModded;
+    DWORD writtenSize = 0;
+    char* written = ReadFileBytes(fixture, &writtenSize);
+    BOOL consent = FALSE;
+    ok = ok && written && JsonTryBoolValue(written, "mods_enabled", &consent) && consent &&
+         strstr(written, "DispatchFixture") && strstr(written, "DisabledFixture") &&
+         !JsonBoolAfterId(written, L"DispatchFixture") && !JsonBoolAfterId(written, L"DisabledFixture");
+    if (written) HeapFree(GetProcessHeap(), 0, written);
+    Launch(FALSE);
+    ok = ok && g_testSettingsWrites == 2 && !g_testSettingsModded && g_testGameStarts == 2 && !g_testLaunchModded;
+    Launch(TRUE);
+    ok = ok && g_testSettingsWrites == 3 && g_testSettingsModded && g_testGameStarts == 3 && g_testLaunchModded;
+    written = ReadFileBytes(fixture, &writtenSize);
+    ok = ok && written && JsonBoolAfterId(written, L"DispatchFixture") &&
+         !JsonBoolAfterId(written, L"DisabledFixture") && strstr(written, "\"language\":\"eng\"");
+    if (written) HeapFree(GetProcessHeap(), 0, written);
+    wcscpy(g_settingsFile, originalSettings);
+    DeleteFileW(fixture);
+    g_services.settings = settingsService;
+    g_services.launch = launchService;
+    DestroyWindow(host);
+    g_gamePath = g_settingsPath = g_list = NULL;
+    g_modCount = 0;
+    ZeroMemory(&g_mods[0], sizeof(g_mods[0]));
+    ZeroMemory(&g_mods[1], sizeof(g_mods[1]));
+    AppendLog(ok ? L"Vanilla dispatch passed: all-disabled writes then selected write; one start per request"
+                 : L"Vanilla dispatch self-test failed");
+    return ok;
+}
+
 static int RunSettingsSelfTest(void) {
+    if (!RunVanillaDispatchSelfTest()) return 29;
+    if (!RunLaunchArgumentsSelfTest()) {
+        AppendLog(L"Official Vanilla argument self-test failed");
+        return 28;
+    }
     WCHAR dataDir[MAX_PATH * 2], root[MAX_PATH * 2], oldDir[MAX_PATH * 2], newDir[MAX_PATH * 2];
     WCHAR oldFile[MAX_PATH * 2], newFile[MAX_PATH * 2], selected[MAX_PATH * 2];
     JoinPath(dataDir, _countof(dataDir), g_appDir, L"ModTheSpire2Data");
@@ -4180,6 +4517,8 @@ static int RunSettingsSelfTest(void) {
     char* afterList = ReadModListSpanCopy(vanillaFile, &afterLen);
     char* afterJson = ReadFileBytes(vanillaFile, &afterSize);
     BOOL vanillaOk = beforeList && afterList &&
+                     (strstr(afterJson ? afterJson : "", "\"mods_enabled\":true") != NULL ||
+                      strstr(afterJson ? afterJson : "", "\"mods_enabled\": true") != NULL) &&
                      strstr(afterJson ? afterJson : "", "\"id\":\"BaseLib\"") != NULL &&
                      strstr(afterJson ? afterJson : "", "\"id\":\"QuickRestart\"") != NULL &&
                      (strstr(afterJson ? afterJson : "", "\"is_enabled\": false") != NULL ||

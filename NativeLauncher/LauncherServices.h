@@ -16,11 +16,11 @@ typedef struct Mts2GroupingService {
 } Mts2GroupingService;
 
 typedef struct Mts2SettingsService {
-    void (*write)(BOOL modded);
+    BOOL (*write)(BOOL modded);
 } Mts2SettingsService;
 
 typedef struct Mts2LaunchService {
-    BOOL (*startGame)(void);
+    BOOL (*startGame)(BOOL modded);
 } Mts2LaunchService;
 
 typedef struct Mts2LauncherServices {
